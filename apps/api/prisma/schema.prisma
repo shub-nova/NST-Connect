@@ -1,0 +1,289 @@
+// NST Connect database schema. Source of truth: docs/er-diagram.md
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  POC
+  SUPER_ADMIN
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TicketStatus {
+  CREATED
+  ASSIGNED
+  IN_PROGRESS
+  ESCALATED
+  /// Finished with a fix. Shown to people as "Solved".
+  RESOLVED
+  /// Finished without a fix (invalid, duplicate, not possible).
+  CLOSED
+  REOPENED
+}
+
+enum EventType {
+  CREATED
+  ASSIGNED
+  COMMENTED
+  STATUS_CHANGED
+  ESCALATED
+  TAT_BREACHED
+  NUDGED
+  RESOLVED
+  CLOSED
+  REOPENED
+  LINKED
+  UNLINKED
+}
+
+enum Visibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+}
+
+enum NotificationType {
+  STATUS_CHANGE
+  COMMENT
+  MENTION
+  ESCALATION
+  RESOLVED
+  NUDGE
+  NEW_TICKET
+}
+
+model User {
+  id              String    @id @default(uuid()) @db.Uuid
+  email           String    @unique
+  name            String
+  passwordHash    String?   @map("password_hash")
+  role            Role
+  enrollmentId    String?   @map("enrollment_id")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  pocAssignments POCAssignment[]
+  ticketsRaised  Ticket[]         @relation("TicketStudent")
+  ticketsHeld    Ticket[]         @relation("TicketAssignedPoc")
+  events         TicketEvent[]
+  comments       Comment[]
+  mentions       CommentMention[]
+  attachments    Attachment[]
+  notifications  Notification[]
+  refreshTokens  RefreshToken[]
+
+  @@map("user")
+}
+
+model Category {
+  id        String  @id @default(uuid()) @db.Uuid
+  name      String  @unique
+  /// Short label for chips and team names, e.g. "Hostel" for "Hostel & Accommodation".
+  shortName String  @default("") @map("short_name")
+  sortOrder Int     @default(0) @map("sort_order")
+  maxLevel  Int     @default(3) @map("max_level")
+  active    Boolean @default(true)
+
+  subCategories  SubCategory[]
+  pocAssignments POCAssignment[]
+  tickets        Ticket[]
+
+  @@map("category")
+}
+
+model SubCategory {
+  id         String  @id @default(uuid()) @db.Uuid
+  categoryId String  @map("category_id") @db.Uuid
+  name       String
+  sortOrder  Int     @default(0) @map("sort_order")
+  active     Boolean @default(true)
+
+  category Category @relation(fields: [categoryId], references: [id])
+  tickets  Ticket[]
+
+  @@unique([categoryId, name])
+  @@map("sub_category")
+}
+
+model POCAssignment {
+  id                  String  @id @default(uuid()) @db.Uuid
+  userId              String  @map("user_id") @db.Uuid
+  categoryId          String  @map("category_id") @db.Uuid
+  level               Int
+  managerAssignmentId String? @map("manager_assignment_id") @db.Uuid
+  active              Boolean @default(true)
+  onLeave             Boolean @default(false) @map("on_leave")
+
+  user     User            @relation(fields: [userId], references: [id])
+  category Category        @relation(fields: [categoryId], references: [id])
+  manager  POCAssignment?  @relation("Manages", fields: [managerAssignmentId], references: [id])
+  reports  POCAssignment[] @relation("Manages")
+
+  @@unique([userId, categoryId])
+  @@index([categoryId, level, active])
+  @@map("poc_assignment")
+}
+
+model Ticket {
+  id             String       @id @default(uuid()) @db.Uuid
+  title          String
+  description    String
+  categoryId     String       @map("category_id") @db.Uuid
+  subCategoryId  String?      @map("sub_category_id") @db.Uuid
+  studentId      String       @map("student_id") @db.Uuid
+  priority       Priority     @default(MEDIUM)
+  status         TicketStatus @default(CREATED)
+  currentLevel   Int          @default(1) @map("current_level")
+  resolvedLevel  Int?         @map("resolved_level")
+  assignedPocId  String?      @map("assigned_poc_id") @db.Uuid
+  tatDeadline    DateTime?    @map("tat_deadline")
+  critical       Boolean      @default(false)
+  parentTicketId String?      @map("parent_ticket_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  resolvedAt     DateTime?    @map("resolved_at")
+
+  category      Category       @relation(fields: [categoryId], references: [id])
+  subCategory   SubCategory?   @relation(fields: [subCategoryId], references: [id])
+  student       User           @relation("TicketStudent", fields: [studentId], references: [id])
+  assignedPoc   User?          @relation("TicketAssignedPoc", fields: [assignedPocId], references: [id])
+  parent        Ticket?        @relation("Duplicates", fields: [parentTicketId], references: [id])
+  duplicates    Ticket[]       @relation("Duplicates")
+  events        TicketEvent[]
+  comments      Comment[]
+  attachments   Attachment[]
+  notifications Notification[]
+
+  @@index([status, currentLevel, tatDeadline])
+  @@index([studentId, createdAt])
+  @@index([categoryId, status])
+  @@map("ticket")
+}
+
+model TicketEvent {
+  id         String        @id @default(uuid()) @db.Uuid
+  ticketId   String        @map("ticket_id") @db.Uuid
+  type       EventType
+  actorId    String?       @map("actor_id") @db.Uuid
+  fromStatus TicketStatus? @map("from_status")
+  toStatus   TicketStatus? @map("to_status")
+  fromLevel  Int?          @map("from_level")
+  toLevel    Int?          @map("to_level")
+  visibility Visibility    @default(PUBLIC)
+  note       String?
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id])
+  actor  User?  @relation(fields: [actorId], references: [id])
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_event")
+}
+
+model Comment {
+  id              String     @id @default(uuid()) @db.Uuid
+  ticketId        String     @map("ticket_id") @db.Uuid
+  authorId        String     @map("author_id") @db.Uuid
+  parentCommentId String?    @map("parent_comment_id") @db.Uuid
+  body            String
+  visibility      Visibility @default(PUBLIC)
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  ticket        Ticket           @relation(fields: [ticketId], references: [id])
+  author        User             @relation(fields: [authorId], references: [id])
+  parent        Comment?         @relation("Replies", fields: [parentCommentId], references: [id])
+  replies       Comment[]        @relation("Replies")
+  mentions      CommentMention[]
+  attachments   Attachment[]
+  notifications Notification[]
+
+  @@index([ticketId, createdAt])
+  @@map("comment")
+}
+
+model CommentMention {
+  commentId       String @map("comment_id") @db.Uuid
+  mentionedUserId String @map("mentioned_user_id") @db.Uuid
+
+  comment Comment @relation(fields: [commentId], references: [id])
+  user    User    @relation(fields: [mentionedUserId], references: [id])
+
+  @@id([commentId, mentionedUserId])
+  @@map("comment_mention")
+}
+
+model Attachment {
+  id         String     @id @default(uuid()) @db.Uuid
+  ticketId   String     @map("ticket_id") @db.Uuid
+  commentId  String?    @map("comment_id") @db.Uuid
+  uploaderId String     @map("uploader_id") @db.Uuid
+  storageKey String     @unique @map("storage_key")
+  fileName   String     @map("file_name")
+  mimeType   String     @map("mime_type")
+  sizeBytes  BigInt     @map("size_bytes")
+  scanStatus ScanStatus @default(PENDING) @map("scan_status")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  ticket   Ticket   @relation(fields: [ticketId], references: [id])
+  comment  Comment? @relation(fields: [commentId], references: [id])
+  uploader User     @relation(fields: [uploaderId], references: [id])
+
+  @@index([ticketId])
+  @@map("attachment")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  ticketId  String?          @map("ticket_id") @db.Uuid
+  commentId String?          @map("comment_id") @db.Uuid
+  readAt    DateTime?        @map("read_at")
+  emailedAt DateTime?        @map("emailed_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user    User     @relation(fields: [userId], references: [id])
+  ticket  Ticket?  @relation(fields: [ticketId], references: [id])
+  comment Comment? @relation(fields: [commentId], references: [id])
+
+  @@index([userId, readAt])
+  @@map("notification")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("refresh_token")
+}
+
+model JobHeartbeat {
+  jobName   String   @id @map("job_name")
+  lastRunAt DateTime @map("last_run_at")
+
+  @@map("job_heartbeat")
+}
