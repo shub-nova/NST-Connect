@@ -1,0 +1,311 @@
+"use client";
+
+import Link from "next/link";
+import { use, useEffect, useState } from "react";
+import { Avatar, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
+import { ApiError, api } from "@/lib/api";
+import { formatSize } from "@/lib/files";
+import type { CloseOutcome, PocTicketDetail } from "@/lib/types";
+import { isFinished } from "@/lib/types";
+
+const OUTCOMES: { id: CloseOutcome; label: string; action: string; help: string; placeholder: string }[] = [
+  { id: "SOLVED", label: "Solved", action: "Mark solved", help: "The issue is fixed. The student sees your note.", placeholder: "What fixed it? The student will see this." },
+  { id: "CLOSED", label: "Closed", action: "Close ticket", help: "Finished without a fix. The student sees your note.", placeholder: "Why is it closed? The student will see this." },
+  { id: "ESCALATED", label: "Escalate", action: "Escalate", help: "Moves to the next level. Only staff see the note.", placeholder: "Why escalate? Only staff will see this." },
+];
+
+const areaCls =
+  "w-full rounded-lg border border-line bg-white px-3.5 py-3 text-base text-ink placeholder:text-muted/70 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand-soft";
+
+export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">) {
+  // In this Next.js version, route params arrive as a Promise; `use` unwraps it.
+  const { id } = use(params);
+  const [ticket, setTicket] = useState<PocTicketDetail | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [reply, setReply] = useState("");
+  const [closing, setClosing] = useState(false);
+  const [outcome, setOutcome] = useState<CloseOutcome | "">("");
+  const [note, setNote] = useState("");
+  const [showErrors, setShowErrors] = useState(false);
+  const [escalated, setEscalated] = useState(false);
+  const [busy, setBusy] = useState<null | "reply" | "progress" | "close">(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api<PocTicketDetail>(`/poc/tickets/${id}`)
+      .then((t) => !cancelled && setTicket(t))
+      .catch((err) => {
+        if (!cancelled) setLoadError(err instanceof ApiError && err.status === 404 ? "Ticket not found." : "Could not load this ticket.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  async function run(kind: "reply" | "progress", path: string, body: unknown, onDone?: () => void) {
+    setBusy(kind);
+    setError(null);
+    try {
+      setTicket(await api<PocTicketDetail>(`/poc/tickets/${id}/${path}`, { body }));
+      onDone?.();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const outcomeProblem = outcome === "" ? "Choose how this ends" : null;
+  const noteProblem = note.trim().length < 5 ? "Add a note (at least 5 characters)" : null;
+
+  async function finish() {
+    if (busy) return;
+    if (outcomeProblem || noteProblem) {
+      setShowErrors(true);
+      return;
+    }
+    setBusy("close");
+    setError(null);
+    try {
+      const res = await api<PocTicketDetail | { escalated: true }>(`/poc/tickets/${id}/close`, { body: { outcome, note } });
+      // Escalating hands the ticket to the next level, so this POC no longer has access to it.
+      if ("escalated" in res) setEscalated(true);
+      else setTicket(res);
+      setClosing(false);
+      setNote("");
+      setOutcome("");
+      setShowErrors(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function download(attachmentId: string) {
+    try {
+      const { url } = await api<{ url: string }>(`/poc/attachments/${attachmentId}/download`);
+      window.open(url, "_blank", "noopener");
+    } catch {
+      setError("Could not download that file.");
+    }
+  }
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <ErrorNote message={loadError} />
+        <Link href="/poc" className={btnGhostCls}>
+          Back to queue
+        </Link>
+      </div>
+    );
+  }
+  if (escalated) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4">
+        <p role="status" className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-green-800">
+          Escalated to the next level. It&apos;s no longer in your queue.
+        </p>
+        <Link href="/poc" className={btnCls}>
+          Back to queue
+        </Link>
+      </div>
+    );
+  }
+  if (!ticket) return <p className="text-sm text-muted">Loading ticket…</p>;
+
+  const resolved = isFinished(ticket.status);
+  const overdue = ticket.tatDeadline ? isPast(ticket.tatDeadline) : false;
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-8">
+      <Link href="/poc" className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline">
+        ← Back to queue
+      </Link>
+
+      <section className="space-y-5 rounded-2xl border border-line bg-white p-4 sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-4">
+            <Avatar name={ticket.category.shortName || ticket.category.name} size="lg" />
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-ink sm:text-2xl">{ticket.title}</h1>
+              <p className="mt-1 text-sm text-muted">
+                {ticket.category.shortName}
+                {ticket.subCategory ? ` › ${ticket.subCategory.name}` : ""}
+              </p>
+            </div>
+          </div>
+          <StatusBadge status={ticket.status} label={ticket.statusLabel} />
+        </div>
+
+        <dl className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
+          <div className="flex gap-2 sm:col-span-2">
+            <dt className="text-muted">Student</dt>
+            <dd className="min-w-0 break-words text-ink">
+              {ticket.student.name} <span className="text-muted">· {ticket.student.email}</span>
+            </dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="text-muted">Raised</dt>
+            <dd className="text-ink">{timeAgo(ticket.createdAt)}</dd>
+          </div>
+          {!resolved && ticket.tatDeadline && (
+            <div className="flex gap-2">
+              <dt className="text-muted">Due</dt>
+              <dd className={overdue ? "font-semibold text-red-600" : "text-ink"}>{formatDate(ticket.tatDeadline)}</dd>
+            </div>
+          )}
+        </dl>
+
+        <p className="whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{ticket.description}</p>
+
+        {ticket.attachments.length > 0 && (
+          <ul className="flex flex-wrap gap-2 border-t border-line pt-5">
+            {ticket.attachments.map((a) => (
+              <li key={a.id}>
+                <button
+                  onClick={() => download(a.id)}
+                  className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:border-brand hover:text-brand"
+                >
+                  <span className="max-w-56 truncate">{a.fileName}</span>
+                  <span className="text-xs text-muted">{formatSize(a.sizeBytes)}</span>
+                  <span className="text-xs font-semibold text-brand">Download</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-label="Conversation" className="space-y-4">
+        <h2 className="text-xl font-bold text-ink">Activity</h2>
+        <ol className="relative space-y-5 border-l-2 border-line pl-7">
+          {ticket.thread.map((item) => (
+            <li key={`${item.kind}-${item.id}`} className="relative">
+              <span
+                className={`absolute -left-[37px] top-1 h-3.5 w-3.5 rounded-full ring-4 ring-white ${item.kind === "comment" ? "bg-brand" : "bg-line"}`}
+              />
+              {item.kind === "comment" ? (
+                <>
+                  <p className="text-sm font-semibold text-ink">
+                    {item.author.name}{" "}
+                    <span className="font-normal text-muted">
+                      · {item.author.role === "STUDENT" ? "student · " : ""}
+                      {formatDate(item.at)}
+                    </span>
+                  </p>
+                  <p className="mt-1.5 whitespace-pre-wrap rounded-lg bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink">{item.body}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[15px] font-medium text-ink">{item.label}</p>
+                  {item.note && (
+                    <p className="mt-1.5 whitespace-pre-wrap rounded-lg bg-green-50 px-3.5 py-2.5 text-[15px] leading-relaxed text-green-900">{item.note}</p>
+                  )}
+                  <p className="mt-0.5 text-sm text-muted">{formatDate(item.at)}</p>
+                </>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {!resolved && (
+        <section className="space-y-3">
+          <ErrorNote message={error} />
+          {!closing ? (
+            <>
+              <textarea
+                aria-label="Reply"
+                className={`${areaCls} min-h-28 resize-y`}
+                placeholder="Write a reply"
+                maxLength={5000}
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  className={btnCls}
+                  disabled={busy !== null || reply.trim() === ""}
+                  onClick={() => run("reply", "comments", { body: reply }, () => setReply(""))}
+                >
+                  {busy === "reply" ? "Sending…" : "Reply"}
+                </button>
+                {ticket.status !== "IN_PROGRESS" && (
+                  <button
+                    className={btnGhostCls}
+                    disabled={busy !== null}
+                    onClick={() => run("progress", "status", { status: "IN_PROGRESS" })}
+                  >
+                    {busy === "progress" ? "Saving…" : "Mark in progress"}
+                  </button>
+                )}
+                <button className={`${btnGhostCls} sm:ml-auto`} disabled={busy !== null} onClick={() => setClosing(true)}>
+                  Close ticket…
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="How does this end?">
+                  {OUTCOMES.map((o) => {
+                    const active = outcome === o.id;
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={active}
+                        onClick={() => setOutcome(o.id)}
+                        className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                          active ? "border-brand bg-brand text-white" : "border-line bg-white text-ink hover:border-brand hover:text-brand"
+                        }`}
+                      >
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {outcome ? (
+                  <p className="mt-2 text-sm text-muted">{OUTCOMES.find((o) => o.id === outcome)?.help}</p>
+                ) : (
+                  showErrors && outcomeProblem && <p role="alert" className="mt-1.5 text-sm text-red-600">{outcomeProblem}</p>
+                )}
+              </div>
+              <div>
+                <textarea
+                  aria-label="Note"
+                  className={`${areaCls} min-h-28 resize-y ${showErrors && noteProblem ? "border-red-400! focus:ring-red-100!" : ""}`}
+                  placeholder={outcome ? OUTCOMES.find((o) => o.id === outcome)?.placeholder : "Note"}
+                  maxLength={2000}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                />
+                {showErrors && noteProblem && <p role="alert" className="mt-1.5 text-sm text-red-600">{noteProblem}</p>}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button className={btnCls} disabled={busy !== null} onClick={finish}>
+                  {busy === "close" ? "Saving…" : outcome ? OUTCOMES.find((o) => o.id === outcome)?.action : "Confirm"}
+                </button>
+                <button
+                  className={btnGhostCls}
+                  disabled={busy !== null}
+                  onClick={() => {
+                    setClosing(false);
+                    setShowErrors(false);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
