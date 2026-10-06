@@ -1,26 +1,31 @@
 @import "tailwindcss";
 
+/* Light-only, like the Newton School product. Dark variants never activate. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #1f2937;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-inter), system-ui, sans-serif;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Newton School palette, read off the product screenshots. */
+  --color-brand: #2f6df6;
+  --color-brand-dark: #1f58d6;
+  --color-brand-soft: #e8f0ff;
+  --color-accent: #e8862a;
+  --color-ink: #1f2937;
+  --color-muted: #6b7280;
+  --color-line: #dfe3ec;
+  --color-surface: #f5f6f8;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
