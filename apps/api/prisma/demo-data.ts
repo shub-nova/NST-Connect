@@ -110,6 +110,42 @@ const TEMPLATES: Record<string, [string, string][]> = {
   ],
 };
 
+// What students write, by how they felt.
+const COMMENTS = {
+  SATISFIED: [
+    'Quick and clear, thank you.',
+    'Problem fixed the same day.',
+    'Very helpful and polite.',
+    'Sorted out without any follow-up.',
+    'Great support from the team.',
+    'Clear explanation, thanks a lot.',
+    'Handled with care and patience.',
+    'Replied faster than I expected.',
+    'Exactly what I needed.',
+    'Easy process from start to finish.',
+  ],
+  OKAY: [
+    'It worked, but it took longer than expected.',
+    'Fixed, though I had to ask twice.',
+    'Fine in the end, but the updates were slow.',
+    'Got there eventually, but communication was unclear.',
+    'Decent help, nothing special.',
+    'Needed a reminder before anyone replied.',
+  ],
+  NOT_SATISFIED: [
+    'Still facing the same problem.',
+    'No proper explanation was given.',
+    'Took too many days and I had to follow up.',
+    'The reply did not answer my question.',
+    'Nobody replied for a long time.',
+    'Closed without solving the issue.',
+    'Had to explain the issue again and again.',
+    'Not happy with the response.',
+    'Feels like my concern was ignored.',
+    'Waiting too long for an update.',
+  ],
+} as const;
+
 interface Poc {
   userId: string;
   level: number;
@@ -155,6 +191,8 @@ async function main() {
 
     const ticketRows: Prisma.TicketCreateManyInput[] = [];
     const eventRows: Prisma.TicketEventCreateManyInput[] = [];
+    const feedbackRows: Prisma.TicketFeedbackCreateManyInput[] = [];
+    let selfClosed = 0;
 
     for (let i = 0; i < count; i++) {
       const category = pick(weighted);
@@ -183,8 +221,13 @@ async function main() {
 
       const ticketId = randomUUID();
       const studentId = pick(students).id;
-      const ev = (type: EventType, at: Date, extra: Partial<Prisma.TicketEventCreateManyInput> = {}) =>
-        eventRows.push({ ticketId, type, createdAt: at, ...extra });
+      // Events get an id up front so a finish can be linked to the student's feedback on it.
+      const ev = (type: EventType, at: Date, extra: Partial<Prisma.TicketEventCreateManyInput> = {}): string => {
+        const id = randomUUID();
+        eventRows.push({ id, ticketId, type, createdAt: at, ...extra });
+        return id;
+      };
+      const finishes: { eventId: string; at: Date; userId: string; level: number; hoursToFinish: number; reopenedAfter: boolean }[] = [];
 
       ev('CREATED', createdAt, { actorId: studentId, toStatus: 'CREATED', toLevel: 1 });
       let level = 1;
@@ -199,6 +242,7 @@ async function main() {
       if (owner) ev('ASSIGNED', cur, { fromStatus: 'CREATED', toStatus: 'ASSIGNED', toLevel: 1, assigneeId: owner.userId });
 
       let reopenedOnce = false;
+      let closedByStudent = false;
       while (owner) {
         const deadline = new Date(cur.getTime() + 48 * HOUR);
         const actAt = new Date(cur.getTime() + lognormal(owner.medianHours) * HOUR);
@@ -229,13 +273,15 @@ async function main() {
         }
         const solved = chance(0.84);
         status = solved ? 'RESOLVED' : 'CLOSED';
-        ev(solved ? 'RESOLVED' : 'CLOSED', actAt, { actorId: owner.userId, fromStatus: 'IN_PROGRESS', toStatus: status, fromLevel: level, toLevel: level, note: solved ? 'Sorted out.' : 'Closed after review.' });
+        const finishEventId = ev(solved ? 'RESOLVED' : 'CLOSED', actAt, { actorId: owner.userId, fromStatus: 'IN_PROGRESS', toStatus: status, fromLevel: level, toLevel: level, note: solved ? 'Sorted out.' : 'Closed after review.' });
         resolvedAt = actAt; resolvedLevel = level; last = actAt; tatDeadline = null;
+        finishes.push({ eventId: finishEventId, at: actAt, userId: owner.userId, level, hoursToFinish: (actAt.getTime() - createdAt.getTime()) / HOUR, reopenedAfter: false });
 
         if (!reopenedOnce && level < 3 && chance(0.06)) {
           const reopenAt = new Date(actAt.getTime() + (1 + rand() * 3) * DAY);
           if (reopenAt < now) {
             reopenedOnce = true;
+            finishes[finishes.length - 1].reopenedAfter = true;
             ev('REOPENED', reopenAt, { actorId: studentId, fromStatus: status, toStatus: 'REOPENED', fromLevel: level, toLevel: level, assigneeId: owner.userId });
             status = 'REOPENED'; cur = reopenAt; resolvedAt = null; resolvedLevel = null; last = reopenAt;
             continue;
@@ -244,6 +290,40 @@ async function main() {
         break;
       }
       if (!owner) { status = 'CREATED'; tatDeadline = null; }
+
+      // Some students close their own open ticket (they sorted it out). It is not a POC outcome.
+      if (owner && !critical && !['RESOLVED', 'CLOSED'].includes(status) && chance(0.05)) {
+        const closedAt = new Date(last.getTime() + (1 + rand() * 20) * HOUR);
+        if (closedAt < now) {
+          ev('CLOSED_BY_STUDENT', closedAt, { actorId: studentId, fromStatus: status, toStatus: 'CLOSED', fromLevel: level, toLevel: level });
+          status = 'CLOSED'; tatDeadline = null; last = closedAt; selfClosed++;
+          closedByStudent = true;
+        }
+      }
+
+      // Students answer about half the time. Some POCs are liked more than others, and slow or reopened
+      // tickets get worse ratings, so the dashboards show real differences.
+      for (const f of finishes) {
+        if (!chance(0.5)) continue;
+        const liked = 0.55 + (parseInt(f.userId.slice(4, 8), 16) % 36) / 100; // 0.55 to 0.90 per person
+        const pSatisfied = Math.max(0.1, liked - (f.hoursToFinish > 72 ? 0.25 : 0) - (f.reopenedAfter ? 0.45 : 0));
+        const roll = rand();
+        const rating = roll < pSatisfied ? 'SATISFIED' : roll < pSatisfied + (1 - pSatisfied) * (f.reopenedAfter ? 0.2 : 0.45) ? 'OKAY' : 'NOT_SATISFIED';
+        const at = new Date(Math.min(now.getTime() - 1000, f.at.getTime() + rand() * 2 * DAY));
+        feedbackRows.push({
+          ticketId,
+          studentId,
+          finishEventId: f.eventId,
+          rating,
+          comment: chance(0.5) ? skewed([...COMMENTS[rating]]) : null,
+          finishedById: f.userId,
+          finishedLevel: f.level,
+          categoryId: category.id,
+          subCategoryId: subCategory.id,
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
 
       ticketRows.push({
         id: ticketId,
@@ -261,14 +341,17 @@ async function main() {
         createdAt,
         updatedAt: last,
         resolvedAt,
+        closedByStudent,
       });
     }
 
     for (let i = 0; i < ticketRows.length; i += 500) await prisma.ticket.createMany({ data: ticketRows.slice(i, i + 500) });
     for (let i = 0; i < eventRows.length; i += 2000) await prisma.ticketEvent.createMany({ data: eventRows.slice(i, i + 2000) });
+    for (let i = 0; i < feedbackRows.length; i += 1000) await prisma.ticketFeedback.createMany({ data: feedbackRows.slice(i, i + 1000) });
 
     const open = ticketRows.filter((t) => !['RESOLVED', 'CLOSED'].includes(String(t.status))).length;
     console.log(`Created ${ticketRows.length} demo tickets (${open} still open) and ${eventRows.length} events over the last ${DAYS} days.`);
+    console.log(`Plus ${feedbackRows.length} student feedback answers and ${selfClosed} tickets closed by their student.`);
     console.log('Run with --clean to remove them.');
   } finally {
     await prisma.$disconnect();
@@ -284,6 +367,7 @@ async function clean(prisma: PrismaClient) {
   await prisma.commentMention.deleteMany({ where: { comment: tickets } });
   await prisma.comment.deleteMany({ where: tickets });
   await prisma.attachment.deleteMany({ where: tickets });
+  await prisma.ticketFeedback.deleteMany({ where: tickets });
   await prisma.ticketEvent.deleteMany({ where: tickets });
   await prisma.ticket.deleteMany({ where: { studentId: { in: studentIds } } });
   await prisma.user.deleteMany({ where: { id: { in: studentIds } } });

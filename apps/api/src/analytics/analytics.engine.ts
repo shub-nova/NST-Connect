@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { DateRange } from './range';
-import { topTerms } from './words';
+import { topCommentPhrases, topTerms } from './words';
 
 /**
  * What a dashboard is "about".
@@ -16,6 +16,9 @@ export interface Scope {
 
 /** Tickets that took 10 or more days are grouped into the last bar. */
 export const MAX_FINISH_DAYS = 10;
+
+/** Fewer answers than this and a percentage would be noise, so it is not shown. */
+export const MIN_FEEDBACK_ANSWERS = 5;
 
 const HOUR = 3600;
 const OPEN_STATUSES = Prisma.sql`('CREATED','ASSIGNED','IN_PROGRESS','ESCALATED','REOPENED')`;
@@ -74,7 +77,7 @@ export class AnalyticsEngine {
     const { from, to } = range;
     const scoped = this.ticketScope(scope);
 
-    const [outcomes, finishRows, levelRows, openRows, totalRows, autoOut, autoIn, reopenRows] = await Promise.all([
+    const [outcomes, finishRows, levelRows, openRows, totalRows, autoOut, autoIn, reopenRows, feedbackRows] = await Promise.all([
       this.prisma.$queryRaw<{ type: string; reason: string | null; n: bigint }[]>`
         SELECT e.type::text AS type, e.reason::text AS reason, count(*) AS n
           FROM ticket_event e JOIN (${scoped}) s ON s.id = e.ticket_id
@@ -100,9 +103,8 @@ export class AnalyticsEngine {
              WHERE e.created_at >= ${from} AND e.created_at < ${to}
                AND e.type IN ('RESOLVED','CLOSED') AND e.actor_id = ANY(${scope.userIds}::uuid[])`
         : Promise.resolve([{ avg_s: null }]),
-      this.prisma.$queryRaw<{ open: bigint; overdue: bigint; critical: bigint; soon: bigint }[]>`
+      this.prisma.$queryRaw<{ open: bigint; overdue: bigint; critical: bigint }[]>`
         SELECT count(*) AS open,
-               count(*) FILTER (WHERE t.tat_deadline >= ${now} AND t.tat_deadline < ${new Date(now.getTime() + 24 * 3600 * 1000)}) AS soon,
                count(*) FILTER (WHERE t.tat_deadline < ${now}) AS overdue,
                count(*) FILTER (WHERE t.critical) AS critical
           FROM ticket t JOIN (${scoped}) s ON s.id = t.id
@@ -126,7 +128,20 @@ export class AnalyticsEngine {
         SELECT count(*) AS n FROM ticket_event e JOIN (${scoped}) s ON s.id = e.ticket_id
          WHERE e.type = 'REOPENED' AND e.created_at >= ${from} AND e.created_at < ${to}
            ${scope.userIds ? Prisma.sql`AND e.assignee_id = ANY(${scope.userIds}::uuid[])` : Prisma.empty}`,
+      // Student feedback is credited to the POC who solved or closed the ticket.
+      this.prisma.$queryRaw<{ rating: string; n: bigint }[]>`
+        SELECT f.rating::text AS rating, count(*) AS n
+          FROM ticket_feedback f JOIN (${scoped}) s ON s.id = f.ticket_id
+         WHERE f.created_at >= ${from} AND f.created_at < ${to}
+           ${scope.userIds ? Prisma.sql`AND f.finished_by_id = ANY(${scope.userIds}::uuid[])` : Prisma.empty}
+         GROUP BY 1`,
     ]);
+
+    const answers = (rating: string) => num(feedbackRows.find((r) => r.rating === rating)?.n);
+    const satisfied = answers('SATISFIED');
+    const okay = answers('OKAY');
+    const notSatisfied = answers('NOT_SATISFIED');
+    const responses = satisfied + okay + notSatisfied;
 
     const count = (type: string, reason?: string) =>
       outcomes.filter((o) => o.type === type && (reason === undefined || o.reason === reason)).reduce((a, o) => a + num(o.n), 0);
@@ -148,8 +163,6 @@ export class AnalyticsEngine {
       avgHoursAtMyLevel: hours(levelRows[0]?.avg_s),
       actionNeeded: open,
       overdue: num(openRows[0]?.overdue),
-      // Open tickets whose 48h runs out within 24 hours: they escalate (or turn critical at L3) unless acted on.
-      dueIn24h: num(openRows[0]?.soon),
       critical: num(openRows[0]?.critical),
       total: num(totalRows[0]?.n),
       autoEscalatedFrom: num(autoOut[0]?.n), // for "everyone" scopes this is all automatic escalations
@@ -158,6 +171,14 @@ export class AnalyticsEngine {
       manualEscalations: manual,
       reopened: num(reopenRows[0]?.n),
       reopenRatePct: pct(num(reopenRows[0]?.n), finished),
+      feedback: {
+        responses,
+        satisfied,
+        okay,
+        notSatisfied,
+        // Only shown once there are enough answers for a percentage to mean something.
+        satisfactionPct: responses >= MIN_FEEDBACK_ANSWERS ? pct(satisfied, responses) : null,
+      },
     };
   }
 
@@ -186,7 +207,7 @@ export class AnalyticsEngine {
     const touchedPrev = this.touched(scope, prevFrom, from);
     const unit = Prisma.raw(`'${bucket}'`);
 
-    const [headline, finishTimes, cats, catsPrev, subs, subsPrev, subTat, created, ended, escTrend, texts, ageing] =
+    const [headline, finishTimes, cats, catsPrev, subs, subsPrev, subTat, created, ended, escTrend, texts, ageing, feedbackTexts] =
       await Promise.all([
         this.headline(scope, range, now),
         this.finishDistribution(scope, range),
@@ -243,6 +264,13 @@ export class AnalyticsEngine {
            WHERE t.status IN ${OPEN_STATUSES}
              ${scope.userIds ? Prisma.sql`AND t.assigned_poc_id = ANY(${scope.userIds}::uuid[])` : Prisma.empty}
            GROUP BY 1`,
+        // The written feedback itself is never sent to the browser: only what is mentioned most.
+        this.prisma.$queryRaw<{ comment: string }[]>`
+          SELECT f.comment
+            FROM ticket_feedback f JOIN (${scoped}) s ON s.id = f.ticket_id
+           WHERE f.comment IS NOT NULL AND f.created_at >= ${from} AND f.created_at < ${to}
+             ${scope.userIds ? Prisma.sql`AND f.finished_by_id = ANY(${scope.userIds}::uuid[])` : Prisma.empty}
+           ORDER BY f.created_at DESC LIMIT 2000`,
       ]);
 
     const prevCat = new Map(catsPrev.map((r) => [r.id, num(r.n)]));
@@ -266,6 +294,8 @@ export class AnalyticsEngine {
     }));
 
     const terms = topTerms(texts.map((t) => `${t.title}. ${t.description}`));
+    // The phrases students repeat in their comments (each said at least twice), not single words.
+    const mentioned = topCommentPhrases(feedbackTexts.map((f) => f.comment));
     const left = (k: string) => num(ageing.find((a) => a.bucket === k)?.n);
 
     return {
@@ -284,6 +314,7 @@ export class AnalyticsEngine {
       trend,
       words: terms.words,
       phrases: terms.phrases,
+      feedbackTerms: mentioned,
       // Open tickets by how much of their 48h is left. Critical tickets have no clock, so they are not in here.
       timeLeft: {
         overdue: left('overdue'),

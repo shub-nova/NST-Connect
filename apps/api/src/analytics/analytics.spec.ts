@@ -1,5 +1,5 @@
 import { resolveRange } from './range';
-import { tokenize, topTerms } from './words';
+import { tokenize, topCommentPhrases, topTerms } from './words';
 
 describe('topTerms', () => {
   it('drops stop words and counts a word once per ticket', () => {
@@ -44,5 +44,27 @@ describe('resolveRange', () => {
     expect(() => resolveRange('2026-10-08', '2026-10-01', now)).toThrow();
     expect(() => resolveRange('2020-01-01', '2026-10-01', now)).toThrow();
     expect(() => resolveRange('nonsense', '2026-10-01', now)).toThrow();
+  });
+});
+
+describe('topCommentPhrases', () => {
+  it('finds whole repeated phrases, including small words inside them', () => {
+    const out = topCommentPhrases(['Quick and clear, thank you.', 'Quick and clear!', 'Very quick and clear answer', 'Took too long']);
+    expect(out).toEqual([{ term: 'quick and clear', count: 3 }]);
+  });
+
+  it('keeps the full phrase and drops its fragments', () => {
+    const out = topCommentPhrases(['Problem fixed the same day.', 'The problem fixed the same day, thanks', 'Problem fixed the same day']);
+    expect(out).toEqual([{ term: 'problem fixed the same day', count: 3 }]);
+  });
+
+  it('counts a phrase once per comment and needs at least two comments', () => {
+    expect(topCommentPhrases(['great help great help great help'])).toEqual([]);
+    expect(topCommentPhrases(['Great help.', 'great help'])).toEqual([{ term: 'great help', count: 2 }]);
+  });
+
+  it('does not build phrases across sentences or start and end on filler words', () => {
+    expect(topCommentPhrases(['Slow. Rude.', 'Slow. Rude.'])).toEqual([]);
+    expect(topCommentPhrases(['to the team', 'to the team'])).toEqual([]); // only one meaningful word, so no phrase
   });
 });

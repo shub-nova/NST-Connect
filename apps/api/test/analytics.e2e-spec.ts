@@ -106,15 +106,10 @@ describe('Analytics (e2e)', () => {
     expect(l3Team.members.map((m: { level: number }) => m.level).sort()).toEqual([1, 2]);
   });
 
-  it('forecasts what will escalate in the next 24 hours', async () => {
-    // D is open at L2 with a fresh 48h clock: nothing is due soon.
-    expect((await get('/analytics/me', l2).expect(200)).body.headline.dueIn24h).toBe(0);
+  it('splits open tickets by how much of their 48h is left', async () => {
     await prismaOf(app).ticket.update({ where: { id: d }, data: { tatDeadline: new Date(Date.now() + 10 * HOUR) } });
     const me = (await get('/analytics/me', l2).expect(200)).body;
-    expect(me.headline.dueIn24h).toBe(1);
     expect(me.timeLeft).toMatchObject({ overdue: 0, within12h: 1, later: 0 });
-    expect((await get('/analytics/overall', l2).expect(200)).body.headline.dueIn24h).toBe(1);
-    expect((await get('/analytics/me', l1).expect(200)).body.headline.dueIn24h).toBe(0);
     await prismaOf(app).ticket.update({ where: { id: d }, data: { tatDeadline: new Date(Date.now() + 40 * HOUR) } });
   });
 
