@@ -43,6 +43,17 @@ export const FILE_RULES: Record<string, FileRule> = {
     extensions: ['docx'],
     matches: (h) => startsWith(h, [0x50, 0x4b, 0x03, 0x04]),
   },
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+    maxBytes: 10 * MB,
+    extensions: ['xlsx'],
+    matches: (h) => startsWith(h, [0x50, 0x4b, 0x03, 0x04]), // an .xlsx is a zip file
+  },
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': {
+    maxBytes: 10 * MB,
+    extensions: ['pptx'],
+    matches: (h) => startsWith(h, [0x50, 0x4b, 0x03, 0x04]), // a .pptx is a zip file
+  },
+  'text/csv': { maxBytes: 10 * MB, extensions: ['csv'], matches: isPlainText },
   'text/plain': { maxBytes: 10 * MB, extensions: ['txt', 'log', 'md'], matches: isPlainText },
   'video/mp4': { maxBytes: 100 * MB, extensions: ['mp4'], matches: (h) => ascii(h, 'ftyp', 4) },
   'video/quicktime': { maxBytes: 100 * MB, extensions: ['mov'], matches: (h) => ascii(h, 'ftyp', 4) || ascii(h, 'moov', 4) },

@@ -72,3 +72,39 @@ describe('sanitizeFileName', () => {
     expect(sanitizeFileName('a'.repeat(500) + '.png').length).toBeLessThanOrEqual(150);
   });
 });
+
+describe('spreadsheets, presentations and CSV', () => {
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const PPTX = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  const zipHead = bytes(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00);
+
+  it('accepts .xlsx, .pptx and .csv within 10 MB', () => {
+    expect(checkDeclaration('marks.xlsx', XLSX, 5 * MB)).toEqual({ ok: true });
+    expect(checkDeclaration('slides.pptx', PPTX, 10 * MB)).toEqual({ ok: true });
+    expect(checkDeclaration('export.csv', 'text/csv', 1 * MB)).toEqual({ ok: true });
+    expect(checkDeclaration('marks.xlsx', XLSX, 10 * MB + 1).ok).toBe(false);
+  });
+
+  it('still refuses macro-enabled and legacy Office files, and archives', () => {
+    expect(checkDeclaration('macro.xlsm', 'application/vnd.ms-excel.sheet.macroEnabled.12', 1000).ok).toBe(false);
+    expect(checkDeclaration('old.xls', 'application/vnd.ms-excel', 1000).ok).toBe(false);
+    expect(checkDeclaration('old.ppt', 'application/vnd.ms-powerpoint', 1000).ok).toBe(false);
+    expect(checkDeclaration('data.zip', 'application/zip', 1000).ok).toBe(false);
+  });
+
+  it('needs the right extension for each type', () => {
+    expect(checkDeclaration('marks.csv', XLSX, 1000).ok).toBe(false);
+    expect(checkDeclaration('slides.xlsx', PPTX, 1000).ok).toBe(false);
+    expect(checkDeclaration('table.xlsx', 'text/csv', 1000).ok).toBe(false);
+  });
+
+  it('checks the real content', () => {
+    expect(contentMatchesType(XLSX, zipHead)).toBe(true);
+    expect(contentMatchesType(PPTX, zipHead)).toBe(true);
+    expect(contentMatchesType('text/csv', text('name,marks\nAsha,91\n'))).toBe(true);
+    // An executable, a PDF or a binary blob pretending to be one of these is refused.
+    expect(contentMatchesType(XLSX, bytes(0x4d, 0x5a, 0x90, 0x00))).toBe(false);
+    expect(contentMatchesType(PPTX, text('%PDF-1.7'))).toBe(false);
+    expect(contentMatchesType('text/csv', bytes(0x50, 0x4b, 0x03, 0x04, 0x00))).toBe(false);
+  });
+});
