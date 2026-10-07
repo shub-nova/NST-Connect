@@ -30,9 +30,18 @@ export interface StudentTicketSummary {
   subCategory: { id: string; name: string } | null;
   status: TicketStatus;
   statusLabel: string;
+  /** The student closed this ticket themselves. */
+  closedByYou: boolean;
   assignedTo: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface StudentFeedback {
+  rating: 'SATISFIED' | 'OKAY' | 'NOT_SATISFIED';
+  comment: string | null;
+  /** Answers can be changed for a week. */
+  canChange: boolean;
 }
 
 export interface StudentTicketDetail extends StudentTicketSummary {
@@ -40,6 +49,10 @@ export interface StudentTicketDetail extends StudentTicketSummary {
   resolvedAt: Date | null;
   /** True when the ticket is finished and the student is allowed to reopen it. */
   canReopen: boolean;
+  /** True once the ticket is Solved or Closed: the student can share how it went. */
+  canGiveFeedback: boolean;
+  /** The student's own answer for the latest finish, if they gave one. Nothing about staff. */
+  feedback: StudentFeedback | null;
   timeline: StudentTimelineEntry[];
   attachments: StudentAttachment[];
 }
@@ -77,6 +90,8 @@ export function timelineLabel(type: EventType, categoryName: string, toStatus: T
       return toStatus ? `Marked ${STATUS_LABELS[toStatus].toLowerCase()}` : 'Status updated';
     case 'ESCALATED':
       return `Escalated to ${team}`;
+    case 'CLOSED_BY_STUDENT':
+      return 'You closed this ticket';
     case 'RESOLVED':
       return 'Solved';
     case 'CLOSED':
@@ -92,6 +107,7 @@ interface SummarySource {
   id: string;
   title: string;
   status: TicketStatus;
+  closedByStudent?: boolean;
   createdAt: Date;
   updatedAt: Date;
   category: { id: string; name: string; shortName: string };
@@ -105,7 +121,8 @@ export function toStudentSummary(t: SummarySource): StudentTicketSummary {
     category: { id: t.category.id, name: t.category.name, shortName: displayName(t.category) },
     subCategory: t.subCategory ? { id: t.subCategory.id, name: t.subCategory.name } : null,
     status: t.status,
-    statusLabel: STATUS_LABELS[t.status],
+    statusLabel: t.closedByStudent && t.status === 'CLOSED' ? 'Closed by you' : STATUS_LABELS[t.status],
+    closedByYou: !!t.closedByStudent && t.status === 'CLOSED',
     // Created but not yet routed means nobody holds it yet.
     assignedTo: t.status === 'CREATED' ? null : teamLabel(displayName(t.category)),
     createdAt: t.createdAt,

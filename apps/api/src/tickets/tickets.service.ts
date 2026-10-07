@@ -3,6 +3,7 @@ import { Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { pickLeastLoadedOwner } from './routing';
 import {
+  StudentFeedback,
   StudentTicketDetail,
   StudentTicketSummary,
   StudentTimelineEntry,
@@ -13,6 +14,10 @@ import {
 } from './student-view';
 
 export const TAT_HOURS = 48;
+
+/** How long a student can change their feedback after giving it. */
+const FEEDBACK_CHANGE_DAYS = 7;
+const FINISH_EVENTS = ['RESOLVED', 'CLOSED'] as const;
 
 /**
  * A finished ticket can be reopened unless the highest level finished it: that level has the
@@ -141,6 +146,7 @@ export class TicketsService {
         id: true,
         title: true,
         status: true,
+        closedByStudent: true,
         createdAt: true,
         updatedAt: true,
         category: { select: { id: true, name: true, shortName: true } },
@@ -177,7 +183,7 @@ export class TicketsService {
       }
 
       let owner = null;
-      for (let level = t.resolvedLevel ?? 1; level <= t.category.maxLevel && !owner; level++) {
+      for (let level = t.closedByStudent ? t.currentLevel : (t.resolvedLevel ?? 1); level <= t.category.maxLevel && !owner; level++) {
         owner = await pickLeastLoadedOwner(tx, t.categoryId, level);
       }
       if (!owner) throw new ConflictException('This ticket cannot be reopened right now. Please try again later.');
@@ -209,8 +215,35 @@ export class TicketsService {
           critical: false,
           resolvedAt: null,
           resolvedLevel: null,
+          closedByStudent: false,
         },
       });
+    });
+    return this.getOwnDetail(studentId, ticketId);
+  }
+
+  /**
+   * The student closes their own ticket (they sorted it out, or no longer need it). It leaves the POC's
+   * open queue, stops its clock, and is NOT a POC outcome: analytics never count it as Solved or Closed
+   * and it gets no satisfaction question. The student can still reopen it.
+   */
+  async closeOwn(studentId: string, ticketId: string): Promise<StudentTicketDetail> {
+    await this.prisma.$transaction(async (tx) => {
+      // Lock the row so a POC acting at the same moment cannot interleave.
+      await tx.$queryRaw`SELECT id FROM ticket WHERE id = ${ticketId}::uuid FOR UPDATE`;
+      const t = await tx.ticket.findFirst({ where: { id: ticketId, studentId } });
+      if (!t) throw new NotFoundException('Ticket not found.');
+      if (t.status === 'RESOLVED' || t.status === 'CLOSED') throw new ConflictException('This ticket is already finished.');
+
+      await tx.ticketEvent.create({
+        data: { ticketId, type: 'CLOSED_BY_STUDENT', actorId: studentId, fromStatus: t.status, toStatus: 'CLOSED', fromLevel: t.currentLevel, toLevel: t.currentLevel },
+      });
+      await tx.ticket.update({
+        where: { id: ticketId },
+        data: { status: 'CLOSED', closedByStudent: true, tatDeadline: null, tatWarnedAt: null, critical: false },
+      });
+      // Let the POC who held it know it is gone from their queue.
+      if (t.assignedPocId) await tx.notification.create({ data: { userId: t.assignedPocId, type: 'STATUS_CHANGE', ticketId } });
     });
     return this.getOwnDetail(studentId, ticketId);
   }
@@ -224,6 +257,7 @@ export class TicketsService {
         title: true,
         description: true,
         status: true,
+        closedByStudent: true,
         createdAt: true,
         updatedAt: true,
         resolvedAt: true,
@@ -254,6 +288,23 @@ export class TicketsService {
     });
     if (!t) throw new NotFoundException('Ticket not found.');
 
+    // Feedback belongs to the latest Solved or Closed event, so a reopened ticket can be rated again.
+    const finished = t.status === 'RESOLVED' || t.status === 'CLOSED';
+    const finish = finished
+      ? await this.prisma.ticketEvent.findFirst({
+          where: { ticketId, type: { in: [...FINISH_EVENTS] } },
+          orderBy: { createdAt: 'desc' },
+          select: { feedback: { select: { rating: true, comment: true, createdAt: true } } },
+        })
+      : null;
+    const feedback: StudentFeedback | null = finish?.feedback
+      ? {
+          rating: finish.feedback.rating,
+          comment: finish.feedback.comment,
+          canChange: Date.now() - finish.feedback.createdAt.getTime() <= FEEDBACK_CHANGE_DAYS * 86_400_000,
+        }
+      : null;
+
     const team = displayName(t.category);
     const timeline: StudentTimelineEntry[] = [
       // A COMMENTED event only marks that a reply happened; the reply itself comes from comments.
@@ -279,6 +330,9 @@ export class TicketsService {
       description: t.description,
       resolvedAt: t.resolvedAt,
       canReopen: canReopen(t.status, t.resolvedLevel, t.category.maxLevel),
+      // Feedback is about a POC's outcome, so a ticket the student closed themselves has none.
+      canGiveFeedback: finish !== null,
+      feedback,
       timeline,
       attachments: t.attachments.map((a) => ({
         id: a.id,
@@ -287,5 +341,50 @@ export class TicketsService {
         sizeBytes: Number(a.sizeBytes),
       })),
     };
+  }
+
+  /**
+   * The student's feedback on how a finished ticket went. One answer per finish (Solved or Closed); it
+   * can be changed for a week. The POC who finished the ticket is remembered so analytics can credit
+   * them, but that never leaves the server: staff see the rating and comment, never the student.
+   */
+  async giveFeedback(studentId: string, ticketId: string, input: { rating: 'SATISFIED' | 'OKAY' | 'NOT_SATISFIED'; comment?: string }): Promise<StudentFeedback> {
+    const t = await this.prisma.ticket.findFirst({
+      where: { id: ticketId, studentId },
+      select: { id: true, status: true, categoryId: true, subCategoryId: true, resolvedLevel: true },
+    });
+    if (!t) throw new NotFoundException('Ticket not found.');
+    if (t.status !== 'RESOLVED' && t.status !== 'CLOSED') {
+      throw new ConflictException('You can share feedback once your ticket is Solved or Closed.');
+    }
+
+    const finish = await this.prisma.ticketEvent.findFirst({
+      where: { ticketId, type: { in: [...FINISH_EVENTS] } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, actorId: true, toLevel: true, feedback: { select: { id: true, createdAt: true } } },
+    });
+    if (!finish) throw new ConflictException('This ticket has not been finished yet.');
+    if (finish.feedback && Date.now() - finish.feedback.createdAt.getTime() > FEEDBACK_CHANGE_DAYS * 86_400_000) {
+      throw new ConflictException('Feedback can no longer be changed.');
+    }
+
+    const comment = input.comment?.trim() ? input.comment.trim() : null;
+    const saved = await this.prisma.ticketFeedback.upsert({
+      where: { finishEventId: finish.id },
+      create: {
+        ticketId,
+        studentId,
+        finishEventId: finish.id,
+        rating: input.rating,
+        comment,
+        finishedById: finish.actorId,
+        finishedLevel: finish.toLevel ?? t.resolvedLevel,
+        categoryId: t.categoryId,
+        subCategoryId: t.subCategoryId,
+      },
+      update: { rating: input.rating, comment },
+      select: { rating: true, comment: true },
+    });
+    return { rating: saved.rating, comment: saved.comment, canChange: true };
   }
 }

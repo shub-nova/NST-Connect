@@ -16,6 +16,11 @@ const reopenSchema = z.object({
   comment: z.string().trim().min(5, 'Tell us what is still wrong (at least 5 characters)').max(2000),
 });
 
+const feedbackSchema = z.object({
+  rating: z.enum(['SATISFIED', 'OKAY', 'NOT_SATISFIED'], { message: 'Choose how it went' }),
+  comment: z.string().trim().max(500, 'Keep your comment under 500 characters').optional(),
+});
+
 const listSchema = z.object({
   status: z.enum(['CREATED', 'ASSIGNED', 'IN_PROGRESS', 'ESCALATED', 'RESOLVED', 'CLOSED', 'REOPENED']).optional(),
   categoryId: z.string().uuid().optional(),
@@ -44,6 +49,22 @@ export class TicketsController {
   @Roles(Role.STUDENT)
   list(@CurrentUser() user: AuthUser, @Query() query: unknown) {
     return this.tickets.listOwn(user.id, parseOrThrow(listSchema, query));
+  }
+
+  /** The student closes their own open ticket; it leaves the POC's queue. */
+  @Post('tickets/:id/close')
+  @HttpCode(200)
+  @Roles(Role.STUDENT)
+  close(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
+    return this.tickets.closeOwn(user.id, id);
+  }
+
+  /** Share how a finished ticket went (Satisfied, Okay, Not satisfied, with an optional comment). */
+  @Post('tickets/:id/feedback')
+  @HttpCode(200)
+  @Roles(Role.STUDENT)
+  feedback(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
+    return this.tickets.giveFeedback(user.id, id, parseOrThrow(feedbackSchema, body));
   }
 
   @Post('tickets/:id/reopen')
