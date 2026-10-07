@@ -34,6 +34,7 @@ stateDiagram-v2
 | Rule | Detail |
 | --- | --- |
 | Level is separate from status | `current_level` (1, 2, 3...) changes on escalation; `status` is one of the states above. Students see only a team label, never the level or the person. |
+| Automatic escalation | A background job runs every 15 minutes (and once at API start, to catch up after downtime). A ticket whose deadline has passed means its assigned POC did nothing for 48h, because every POC action restarts the clock. It moves up to the next level that has someone on duty, gets a fresh 48h, and is recorded as two events: `TAT_BREACHED` (internal, held against the POC who did nothing) and `ESCALATED` with `reason = TAT_BREACH` and no actor. At the top level the ticket is flagged `critical` instead, the admins are notified, and the clock stops until a POC acts. Safe to run twice or from several processes (`FOR UPDATE SKIP LOCKED`). Students only ever see "Escalated to <team>". A POC is also warned 12h before the deadline. |
 | TAT clock | `tat_deadline` = time of assignment to the current level + 48h. Reset on every escalation and on reopen. Reassigning within a level does not reset it. |
 | What counts as action | A POC comment, status change or resolution at the current level. A student comment, a view or a nudge does not. |
 | Top level breach | At the highest configured level the ticket does not move. It gets `critical = true` and the Super Admin is notified. |

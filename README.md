@@ -110,6 +110,78 @@ It prints the list of accounts it activated. Use that password to log in as any 
 
 To add or change categories, sub-categories or POCs, edit `apps/api/prisma/categories.ts` and `apps/api/prisma/seed.ts`, then run `npm run db:seed -w apps/api`.
 
+## Automatic escalation
+
+Every ticket has a 48-hour clock for the POC it is assigned to. Each action by that POC (reply, mark in progress, solve, close, escalate) restarts the clock. If it runs out, the ticket moves up one level (L1 → L2 → L3), the POC who did nothing gets a "missed" notification, and the next level gets a fresh 48 hours. A ticket that runs out at the top level is flagged **critical** and the Super Admin is notified. POCs get a warning 12 hours before their deadline. Students only see "Escalated to <team>".
+
+- **Runs:** inside the API every 15 minutes (and once ~10 seconds after it starts, to catch up after downtime). Settings: `ESCALATION_JOB_ENABLED`, `ESCALATION_INTERVAL_MINUTES`, `TAT_WARNING_HOURS` in `.env`.
+- **From an external scheduler** (GitHub Actions, Render cron): set `JOB_SECRET` (16+ characters) and call `POST /internal/escalation/run` with the header `x-job-secret`. Without `JOB_SECRET` that endpoint does not exist.
+- **Try it locally:** raise a ticket, then push its deadline into the past and restart the API:
+
+```bash
+docker exec nst-connect-db-1 psql -U nstconnect -d nstconnect -c "UPDATE ticket SET tat_deadline = now() - interval '1 hour' WHERE id = '<ticket id>';"
+```
+
+## Bulk actions in My queue
+
+When many students report the same problem, right-click a ticket in **My queue** and choose **Select** (on a phone, press and hold). Checkboxes then appear on every ticket, so you can tick more or use "Select all". Use the bar that appears: **Solve**, **Close**, **Escalate** or **Reply**, with one note for the whole batch (up to 50 tickets at a time).
+
+- Each ticket is handled exactly as if it were done alone: same permission checks, its own history entry, its own notice to its own student, and a fresh 48-hour clock where that applies. Escalation spreads tickets across the next level's POCs.
+- A ticket that cannot be changed (already finished, moved by someone else, nobody on duty above) is listed with the reason and does not stop the rest.
+- Students never see that a ticket was part of a batch, and the Escalate reason stays staff-only. Escalate is hidden for L3, the top level.
+- API: `POST /poc/tickets/bulk` with `{ ticketIds, action: SOLVED | CLOSED | ESCALATED | REPLY, note }`.
+
+## Settings: managing POCs
+
+Open **Settings** from the account menu (L2, L3 and the Super Admin; L1 does not have it). From there you can add, change, put on leave and remove the POCs below you:
+
+| Who | Can manage |
+| --- | --- |
+| Super Admin | Any POC in any category (and the only one who can add an L3) |
+| L3 | The L2 and L1 below them, in their own category |
+| L2 | The L1 below them |
+
+- **Add:** name, `@newtonschool.co` email, level (and who they report to if there is a choice). They get an invite email and create their account with that address. Removed people can be added back.
+- **Edit:** name and who they report to. Email and level are fixed: remove and re-add to change them.
+- **Remove:** never a hard delete. Open tickets are handed to colleagues at the same level (or escalated if nobody else is available), the person can no longer log in, and their past work stays in the analytics. You cannot remove the last POC at a level, or someone who still has a team under them.
+- **Recent changes** lists who did what. Every rule is enforced on the server, not just hidden in the screen.
+- API: `GET /staff/team`, `/staff/options`, `/staff/audit`; `POST /staff`, `PATCH /staff/:id`, `POST /staff/:id/leave|remove|resend-invite`; `PUT /staff/me/leave`.
+
+### Leave
+
+Any POC (L1 too) can choose **Go on leave** in the account menu, with a required return date, and managers can do it for their reports. While on leave a POC gets no new tickets. Their open tickets move to another POC at the same level, or are escalated if nobody else is on duty; if every POC at a level is on leave, new tickets start at the next level up. Students never see any of this, and these moves are not counted as manual or automatic escalations in the analytics.
+
+`npm run db:seed` only creates what is missing, so it never undoes changes made in Settings.
+
+## Analytics
+
+Staff-only dashboards (students never reach them). Every view runs the same queries with a different scope, so the numbers always agree.
+
+| Who | Pages | What it covers |
+| --- | --- | --- |
+| L1, L2, L3 | **My analytics** | Tickets that POC handled: outcomes (solved / closed / escalated), action needed / total, will escalate in 24h, auto-escalated from and to them |
+| L2, L3 | **Team analytics** | The POCs below them in their category, side by side (alphabetical, not ranked) |
+| L1, L2, L3 | **Overall analytics** | What is being raised in their category across all levels: the most repeated categories, sub-categories and phrases. Read only, no personal stats |
+| Super Admin | **All teams** | Compare every category; filter by category and level to see each POC |
+
+- **Time to finish** is ticket created → Solved/Closed. Only finished tickets count; the median and "finished within 48h" are shown next to the average.
+- **Auto-escalated** means a POC held a ticket for 48 hours without acting. "From me" is the POC who missed it, "to me" is the one who inherited it. Manual and automatic escalations are shown separately.
+- Choose 7, 30, 90 days or a custom range. Short ranges plot daily points, long ones weekly.
+- API: `GET /analytics/me|team|overall` (POC), `GET /analytics/admin?categoryId=&level=&pocId=` (Super Admin), all with `from` and `to` (`YYYY-MM-DD`).
+
+### Notes from the Super Admin
+
+After looking at the stats, the Super Admin can leave a note for the POCs the current filters select (a category, a level, or one POC). The note appears at the top of their analytics pages with a "Got it" button, adds an unread count in their menu, and is also emailed. The admin sees who has read each note ("Seen 2/3"). Students can never see notes: they are stored in their own tables (`admin_note`, `admin_note_receipt`) and only POC and Super Admin endpoints read them.
+
+- API: `POST /notes` (admin), `GET /notes/sent` (admin), `GET /notes/mine` (POC), `POST /notes/:id/seen` (POC).
+
+**Demo data** so the charts have something to show (development only, never touches real tickets):
+
+```bash
+npm run db:demo-data -w apps/api            # about 2500 tickets over the last 90 days
+npm run db:demo-data -w apps/api -- --clean # remove them again
+```
+
 ## Testing
 
 Unit tests (no services needed):

@@ -62,6 +62,7 @@ erDiagram
         uuid ticket_id FK
         enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, REOPENED, LINKED, UNLINKED"
         uuid actor_id FK "null for system"
+        uuid assignee_id FK "who the ticket went to (ASSIGNED, ESCALATED, REOPENED)"
         enum from_status
         enum to_status
         int from_level
@@ -128,6 +129,7 @@ erDiagram
     TICKET |o--o{ TICKET : "master of duplicates"
     TICKET ||--o{ TICKET_EVENT : "audit log"
     USER |o--o{ TICKET_EVENT : "performed"
+    USER |o--o{ TICKET_EVENT : "received"
     TICKET ||--o{ COMMENT : "thread"
     USER ||--o{ COMMENT : "writes"
     COMMENT |o--o{ COMMENT : "replies"
@@ -161,7 +163,7 @@ erDiagram
 - `ticket(status, current_level, tat_deadline)` for the escalation job and POC dashboards
 - `ticket(student_id, created_at)` for "My Tickets"
 - `ticket(category_id, status)` for queues and analytics
-- `ticket_event(ticket_id, created_at)` for timelines
+- `ticket_event(ticket_id, created_at)` for timelines, `ticket_event(created_at)` for analytics date ranges
 - `comment(ticket_id, created_at)`, `notification(user_id, read_at)`
 - `pg_trgm` index on `ticket(title, description)` for duplicate suggestions
 
