@@ -8,6 +8,10 @@ import { RolesGuard } from './auth/roles.guard';
 import { validateEnv } from './config/env';
 import { HealthController } from './health.controller';
 import { MailModule } from './mail/mail.module';
+import { EscalationModule } from './escalation/escalation.module';
+import { AnalyticsModule } from './analytics/analytics.module';
+import { NotesModule } from './notes/notes.module';
+import { StaffModule } from './staff/staff.module';
 import { PocModule } from './poc/poc.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
@@ -33,6 +37,10 @@ import { AttachmentsModule } from './attachments/attachments.module';
     TicketsModule,
     AttachmentsModule,
     PocModule,
+    EscalationModule,
+    AnalyticsModule,
+    NotesModule,
+    StaffModule,
   ],
   controllers: [HealthController],
   providers: [
