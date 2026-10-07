@@ -49,6 +49,15 @@ enum EventType {
   UNLINKED
   /// A POC's open ticket was handed to someone else (they went on leave, or were removed). Internal only.
   REASSIGNED
+  /// The student closed their own ticket. Not a POC outcome, so analytics never count it as Solved or Closed.
+  CLOSED_BY_STUDENT
+}
+
+/// How a student felt about the outcome of a finished ticket.
+enum FeedbackRating {
+  SATISFIED
+  OKAY
+  NOT_SATISFIED
 }
 
 enum Visibility {
@@ -112,6 +121,8 @@ model User {
   refreshTokens  RefreshToken[]
   notesWritten   AdminNote[]        @relation("NoteAuthor")
   staffChanges   StaffAudit[]       @relation("AuditActor")
+  feedbackGiven  TicketFeedback[]   @relation("FeedbackStudent")
+  feedbackEarned TicketFeedback[]   @relation("FeedbackFinisher")
   staffAuditedOn StaffAudit[]       @relation("AuditTarget")
   noteReceipts   AdminNoteReceipt[]
 
@@ -170,33 +181,36 @@ model POCAssignment {
 }
 
 model Ticket {
-  id             String       @id @default(uuid()) @db.Uuid
-  title          String
-  description    String
-  categoryId     String       @map("category_id") @db.Uuid
-  subCategoryId  String?      @map("sub_category_id") @db.Uuid
-  studentId      String       @map("student_id") @db.Uuid
-  priority       Priority     @default(MEDIUM)
-  status         TicketStatus @default(CREATED)
-  currentLevel   Int          @default(1) @map("current_level")
-  resolvedLevel  Int?         @map("resolved_level")
-  assignedPocId  String?      @map("assigned_poc_id") @db.Uuid
-  tatDeadline    DateTime?    @map("tat_deadline")
+  id              String       @id @default(uuid()) @db.Uuid
+  title           String
+  description     String
+  categoryId      String       @map("category_id") @db.Uuid
+  subCategoryId   String?      @map("sub_category_id") @db.Uuid
+  studentId       String       @map("student_id") @db.Uuid
+  priority        Priority     @default(MEDIUM)
+  status          TicketStatus @default(CREATED)
+  currentLevel    Int          @default(1) @map("current_level")
+  resolvedLevel   Int?         @map("resolved_level")
+  assignedPocId   String?      @map("assigned_poc_id") @db.Uuid
+  tatDeadline     DateTime?    @map("tat_deadline")
   /// When the "12 hours left" warning was sent for the current deadline. Reset whenever the deadline resets.
-  tatWarnedAt    DateTime?    @map("tat_warned_at")
-  critical       Boolean      @default(false)
-  parentTicketId String?      @map("parent_ticket_id") @db.Uuid
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  resolvedAt     DateTime?    @map("resolved_at")
+  tatWarnedAt     DateTime?    @map("tat_warned_at")
+  critical        Boolean      @default(false)
+  /// Closed by the student themselves (status is CLOSED). It leaves the POC's open queue and is not a POC outcome.
+  closedByStudent Boolean      @default(false) @map("closed_by_student")
+  parentTicketId  String?      @map("parent_ticket_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  resolvedAt      DateTime?    @map("resolved_at")
 
-  category      Category       @relation(fields: [categoryId], references: [id])
-  subCategory   SubCategory?   @relation(fields: [subCategoryId], references: [id])
-  student       User           @relation("TicketStudent", fields: [studentId], references: [id])
-  assignedPoc   User?          @relation("TicketAssignedPoc", fields: [assignedPocId], references: [id])
-  parent        Ticket?        @relation("Duplicates", fields: [parentTicketId], references: [id])
-  duplicates    Ticket[]       @relation("Duplicates")
+  category      Category         @relation(fields: [categoryId], references: [id])
+  subCategory   SubCategory?     @relation(fields: [subCategoryId], references: [id])
+  student       User             @relation("TicketStudent", fields: [studentId], references: [id])
+  assignedPoc   User?            @relation("TicketAssignedPoc", fields: [assignedPocId], references: [id])
+  parent        Ticket?          @relation("Duplicates", fields: [parentTicketId], references: [id])
+  duplicates    Ticket[]         @relation("Duplicates")
   events        TicketEvent[]
+  feedback      TicketFeedback[]
   comments      Comment[]
   attachments   Attachment[]
   notifications Notification[]
@@ -225,9 +239,10 @@ model TicketEvent {
   note       String?
   createdAt  DateTime          @default(now()) @map("created_at")
 
-  ticket   Ticket @relation(fields: [ticketId], references: [id])
-  actor    User?  @relation("EventActor", fields: [actorId], references: [id])
-  assignee User?  @relation("EventAssignee", fields: [assigneeId], references: [id])
+  ticket   Ticket          @relation(fields: [ticketId], references: [id])
+  actor    User?           @relation("EventActor", fields: [actorId], references: [id])
+  assignee User?           @relation("EventAssignee", fields: [assigneeId], references: [id])
+  feedback TicketFeedback?
 
   @@index([ticketId, createdAt])
   @@index([createdAt])
@@ -321,6 +336,35 @@ model StaffAudit {
 
   @@index([categoryId, createdAt])
   @@map("staff_audit")
+}
+
+/// A student's feedback on a finished ticket. One per finish: if the ticket is reopened and finished again,
+/// the student can answer again. Staff only ever see the rating and comment, never who wrote them.
+model TicketFeedback {
+  id            String         @id @default(uuid()) @db.Uuid
+  ticketId      String         @map("ticket_id") @db.Uuid
+  studentId     String         @map("student_id") @db.Uuid
+  /// The Solved or Closed event this answers.
+  finishEventId String         @unique @map("finish_event_id") @db.Uuid
+  rating        FeedbackRating
+  comment       String?
+  /// The POC who solved or closed it, and the level they were at: this is who analytics credit.
+  finishedById  String?        @map("finished_by_id") @db.Uuid
+  finishedLevel Int?           @map("finished_level")
+  categoryId    String         @map("category_id") @db.Uuid
+  subCategoryId String?        @map("sub_category_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  ticket      Ticket      @relation(fields: [ticketId], references: [id])
+  student     User        @relation("FeedbackStudent", fields: [studentId], references: [id])
+  finishEvent TicketEvent @relation(fields: [finishEventId], references: [id])
+  finishedBy  User?       @relation("FeedbackFinisher", fields: [finishedById], references: [id])
+
+  @@index([categoryId, createdAt])
+  @@index([finishedById, createdAt])
+  @@index([ticketId])
+  @@map("ticket_feedback")
 }
 
 /// A note the Super Admin writes after looking at the dashboards. Staff only: no student endpoint or

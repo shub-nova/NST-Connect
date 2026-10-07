@@ -22,7 +22,7 @@ export default async function globalSetup() {
   await client.connect();
   try {
     await client.query(
-      'TRUNCATE staff_audit, admin_note_receipt, admin_note, ticket_event, attachment, notification, comment_mention, comment, ticket, refresh_token RESTART IDENTITY CASCADE',
+      'TRUNCATE ticket_feedback, staff_audit, admin_note_receipt, admin_note, ticket_event, attachment, notification, comment_mention, comment, ticket, refresh_token RESTART IDENTITY CASCADE',
     );
     await client.query(`DELETE FROM "user" WHERE role = 'STUDENT'`);
     // Seeded staff go back to "invited, not yet registered" so registration tests are repeatable.
