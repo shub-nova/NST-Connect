@@ -131,6 +131,12 @@ When many students report the same problem, right-click a ticket in **My queue**
 - Students never see that a ticket was part of a batch, and the Escalate reason stays staff-only. Escalate is hidden for L3, the top level.
 - API: `POST /poc/tickets/bulk` with `{ ticketIds, action: SOLVED | CLOSED | ESCALATED | REPLY, note }`.
 
+### Large queues
+
+My queue shows 25 tickets at a time, sorted by the server (least time left, oldest or newest), with a **Load more** button and the total on each tab (for example "Open 270"). Paging uses a cursor, so it stays correct while tickets are being raised and solved. **Select all** selects the tickets currently on screen; press **Load more** first to include more. Bulk actions on a large selection run in groups of 50 with a progress message, and anything that could not be changed is listed afterwards.
+
+- API: `GET /poc/queue?view=open|done&sort=time-left|oldest|newest&limit=25&cursor=…` (returns `tickets`, `total`, `counts`, `nextCursor`).
+
 ## Settings: managing POCs
 
 Open **Settings** from the account menu (L2, L3 and the Super Admin; L1 does not have it). From there you can add, change, put on leave and remove the POCs below you:
@@ -153,13 +159,31 @@ Any POC (L1 too) can choose **Go on leave** in the account menu, with a required
 
 `npm run db:seed` only creates what is missing, so it never undoes changes made in Settings.
 
+## Students closing their own ticket
+
+A student can close any open ticket from its page (**Close ticket**, with a confirmation), for example when they sorted it out themselves.
+
+- It leaves the POC's open queue straight away and its 48-hour clock stops. The POC who held it gets a quiet notification, and it stays in their **Done** tab marked "Closed by student".
+- It is **not a POC outcome**: analytics never count it as Solved or Closed, it is not part of finish times, and the student is not asked for feedback on it.
+- The student can change their mind: **Reopen ticket** sends it back to the level it was at. A ticket they closed is never "final", even at the top level.
+- API: `POST /tickets/:id/close` (student).
+
+## Student feedback
+
+When a ticket is Solved or Closed, the student's ticket page shows **Share your feedback / How did we do?** with three choices (😊 Satisfied, 😐 Okay, 😞 Not satisfied) and an optional comment (up to 500 characters). It is separate from reopening, and L3 outcomes (which cannot be reopened) can still be rated.
+
+- One answer per finish: the student can change it for 7 days. If the ticket is reopened and finished again, they can answer again.
+- Feedback is credited to the POC who solved or closed the ticket. Staff see the rating and comment but never the student, and students never see anything about staff.
+- **My, Team and All teams analytics** show a **Satisfaction** card (the share of answers that were "Satisfied", only once at least 5 students have answered) and a **Student feedback** donut with the breakdown. Hovering a slice shows its count. Beside it, "Most repeated phrases" lists the two-word phrases students repeat most in their comments; the comments themselves are never shown.
+- API: `POST /tickets/:id/feedback` (student); the ticket detail includes `canGiveFeedback` and `feedback`.
+
 ## Analytics
 
 Staff-only dashboards (students never reach them). Every view runs the same queries with a different scope, so the numbers always agree.
 
 | Who | Pages | What it covers |
 | --- | --- | --- |
-| L1, L2, L3 | **My analytics** | Tickets that POC handled: outcomes (solved / closed / escalated), action needed / total, will escalate in 24h, auto-escalated from and to them |
+| L1, L2, L3 | **My analytics** | Tickets that POC handled: outcomes (solved / closed / escalated), action needed / total, auto-escalated from and to them |
 | L2, L3 | **Team analytics** | The POCs below them in their category, side by side (alphabetical, not ranked) |
 | L1, L2, L3 | **Overall analytics** | What is being raised in their category across all levels: the most repeated categories, sub-categories and phrases. Read only, no personal stats |
 | Super Admin | **All teams** | Compare every category; filter by category and level to see each POC |
@@ -171,14 +195,15 @@ Staff-only dashboards (students never reach them). Every view runs the same quer
 
 ### Notes from the Super Admin
 
-After looking at the stats, the Super Admin can leave a note for the POCs the current filters select (a category, a level, or one POC). The note appears at the top of their analytics pages with a "Got it" button, adds an unread count in their menu, and is also emailed. The admin sees who has read each note ("Seen 2/3"). Students can never see notes: they are stored in their own tables (`admin_note`, `admin_note_receipt`) and only POC and Super Admin endpoints read them.
+After looking at the stats, the Super Admin can leave a note for the POCs the current filters select (a category, a level, or one POC). The note appears in a popup from the bell icon in the top bar (with an unread count and a "Got it" button), and is also emailed. The admin sees who has read each note ("Seen 2/3"). Students can never see notes: they are stored in their own tables (`admin_note`, `admin_note_receipt`) and only POC and Super Admin endpoints read them.
 
 - API: `POST /notes` (admin), `GET /notes/sent` (admin), `GET /notes/mine` (POC), `POST /notes/:id/seen` (POC).
+- The Super Admin's bell in the top bar lists the notes they have sent, with "Seen 2/3" on each.
 
 **Demo data** so the charts have something to show (development only, never touches real tickets):
 
 ```bash
-npm run db:demo-data -w apps/api            # about 2500 tickets over the last 90 days
+npm run db:demo-data -w apps/api            # about 2500 tickets over the last 90 days, with student feedback and a few tickets closed by students
 npm run db:demo-data -w apps/api -- --clean # remove them again
 ```
 

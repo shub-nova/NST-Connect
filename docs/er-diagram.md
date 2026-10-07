@@ -71,6 +71,18 @@ erDiagram
         text note "e.g. POC unavailable"
         timestamp created_at
     }
+    TICKET_FEEDBACK {
+        uuid id PK
+        uuid ticket_id FK
+        uuid student_id FK
+        uuid finish_event_id FK "the Solved or Closed event answered; one answer per finish"
+        enum rating "SATISFIED, OKAY, NOT_SATISFIED"
+        text comment
+        uuid finished_by_id FK "the POC credited"
+        int finished_level
+        uuid category_id FK
+        timestamp created_at
+    }
     COMMENT {
         uuid id PK
         uuid ticket_id FK
@@ -128,6 +140,8 @@ erDiagram
     USER |o--o{ TICKET : "currently assigned (POC)"
     TICKET |o--o{ TICKET : "master of duplicates"
     TICKET ||--o{ TICKET_EVENT : "audit log"
+    TICKET ||--o{ TICKET_FEEDBACK : "student feedback"
+    TICKET_EVENT ||--o| TICKET_FEEDBACK : "answers"
     USER |o--o{ TICKET_EVENT : "performed"
     USER |o--o{ TICKET_EVENT : "received"
     TICKET ||--o{ COMMENT : "thread"
