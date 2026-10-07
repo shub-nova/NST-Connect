@@ -73,7 +73,13 @@ export class TicketsService {
     const category = subCategory.category;
 
     const ticketId = await this.prisma.$transaction(async (tx) => {
-      const owner = await pickLeastLoadedOwner(tx, category.id, 1);
+      // Normally level 1. If nobody is on duty there (everyone on leave), the ticket starts at the next
+      // level that has someone, so it never sits without an owner.
+      let owner = null;
+      let startLevel = 1;
+      for (; startLevel <= category.maxLevel && !owner; startLevel++) owner = await pickLeastLoadedOwner(tx, category.id, startLevel);
+      startLevel -= 1;
+      if (!owner) startLevel = 1;
       const now = new Date();
 
       const ticket = await tx.ticket.create({
@@ -85,7 +91,7 @@ export class TicketsService {
           studentId,
           // With nobody on duty at L1 the ticket stays CREATED until one is configured.
           status: owner ? 'ASSIGNED' : 'CREATED',
-          currentLevel: 1,
+          currentLevel: startLevel,
           assignedPocId: owner?.userId ?? null,
           tatDeadline: owner ? new Date(now.getTime() + TAT_HOURS * 60 * 60 * 1000) : null,
         },
@@ -101,7 +107,9 @@ export class TicketsService {
             type: 'ASSIGNED',
             fromStatus: 'CREATED',
             toStatus: 'ASSIGNED',
-            toLevel: 1,
+            toLevel: startLevel,
+            assigneeId: owner.userId,
+            note: startLevel > 1 ? 'Nobody on duty at level 1' : null,
           },
         });
         await tx.notification.create({
@@ -183,6 +191,7 @@ export class TicketsService {
           toStatus: 'REOPENED',
           fromLevel: t.currentLevel,
           toLevel: owner.level,
+          assigneeId: owner.userId,
         },
       });
       const message = await tx.comment.create({
@@ -196,6 +205,8 @@ export class TicketsService {
           currentLevel: owner.level,
           assignedPocId: owner.userId,
           tatDeadline: new Date(Date.now() + TAT_HOURS * 60 * 60 * 1000),
+          tatWarnedAt: null,
+          critical: false,
           resolvedAt: null,
           resolvedLevel: null,
         },

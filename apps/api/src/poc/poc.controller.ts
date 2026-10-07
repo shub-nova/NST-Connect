@@ -4,7 +4,7 @@ import { CurrentUser, Roles } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
 import { parseOrThrow } from '../common/zod';
 import { Role } from '../generated/prisma/client';
-import { PocService } from './poc.service';
+import { MAX_BULK, PocService } from './poc.service';
 
 const querySchema = z.object({ view: z.enum(['open', 'done']).default('open') });
 const commentSchema = z.object({ body: z.string().trim().min(1, 'Write a reply').max(5000) });
@@ -13,6 +13,18 @@ const closeSchema = z.object({
   outcome: z.enum(['SOLVED', 'CLOSED', 'ESCALATED'], { message: 'Choose how this ends' }),
   note: z.string().trim().min(5, 'Add a note (at least 5 characters)').max(2000),
 });
+
+const bulkSchema = z
+  .object({
+    ticketIds: z.array(z.string().uuid()).min(1, 'Select at least one ticket').max(MAX_BULK, `You can update at most ${MAX_BULK} tickets at once`),
+    action: z.enum(['SOLVED', 'CLOSED', 'ESCALATED', 'REPLY'], { message: 'Choose an action' }),
+    note: z.string().trim().max(5000),
+  })
+  // Finishing or escalating needs a proper note; a reply just needs some text.
+  .superRefine((v, ctx) => {
+    const min = v.action === 'REPLY' ? 1 : 5;
+    if (v.note.length < min) ctx.addIssue({ code: 'custom', path: ['note'], message: v.action === 'REPLY' ? 'Write a reply' : 'Add a note (at least 5 characters)' });
+  });
 
 /**
  * POC-only area. Students get 403 from the global RolesGuard before this code runs, and
@@ -26,6 +38,13 @@ export class PocController {
   @Get('queue')
   queue(@CurrentUser() user: AuthUser, @Query() query: unknown) {
     return this.poc.queue(user.id, parseOrThrow(querySchema, query).view);
+  }
+
+  /** Solve, close, escalate or reply to many tickets at once. Declared before the :id routes. */
+  @Post('tickets/bulk')
+  @HttpCode(200)
+  bulk(@CurrentUser() user: AuthUser, @Body() body: unknown) {
+    return this.poc.bulk(user.id, parseOrThrow(bulkSchema, body));
   }
 
   @Get('tickets/:id')

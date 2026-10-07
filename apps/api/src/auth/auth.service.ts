@@ -132,6 +132,7 @@ export class AuthService {
       .verify(user?.passwordHash ?? (await this.dummyHash), password)
       .catch(() => false);
     if (!user || !user.passwordHash || !ok) throw new UnauthorizedException('Invalid email or password.');
+    if (user.deactivatedAt) throw new ForbiddenException('This account has been deactivated.');
     if (!user.emailVerifiedAt) throw new ForbiddenException('Please verify your email before logging in.');
 
     return this.issueTokens(user);
@@ -160,7 +161,7 @@ export class AuthService {
       }
       return this.issueTokens(record.user);
     }
-    if (record.expiresAt < new Date()) throw new UnauthorizedException();
+    if (record.expiresAt < new Date() || record.user.deactivatedAt) throw new UnauthorizedException();
 
     await this.prisma.refreshToken.update({ where: { id: record.id }, data: { revokedAt: new Date() } });
     return this.issueTokens(record.user);

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { pickLeastLoadedOwner } from '../tickets/routing';
 import { EventType, Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,9 +23,13 @@ const POC_EVENT_LABELS: Partial<Record<EventType, string>> = {
   RESOLVED: 'Solved',
   CLOSED: 'Closed',
   REOPENED: 'Reopened',
+  REASSIGNED: 'Handed to another POC',
 };
 
 export type CloseOutcome = 'SOLVED' | 'CLOSED' | 'ESCALATED';
+export type BulkAction = CloseOutcome | 'REPLY';
+/** The most tickets one bulk action may touch. */
+export const MAX_BULK = 50;
 
 export type ThreadItem =
   | { kind: 'comment'; id: string; body: string; visibility: string; author: { name: string; role: string }; at: Date }
@@ -57,6 +61,7 @@ export class PocService {
         title: true,
         status: true,
         currentLevel: true,
+        critical: true,
         tatDeadline: true,
         createdAt: true,
         updatedAt: true,
@@ -80,6 +85,7 @@ export class PocService {
             description: true,
             status: true,
             currentLevel: true,
+            critical: true,
             tatDeadline: true,
             createdAt: true,
             resolvedAt: true,
@@ -94,7 +100,7 @@ export class PocService {
             events: {
               where: { type: { not: 'COMMENTED' } },
               orderBy: { createdAt: 'asc' },
-              select: { id: true, type: true, note: true, toStatus: true, toLevel: true, createdAt: true },
+              select: { id: true, type: true, note: true, toStatus: true, toLevel: true, reason: true, createdAt: true },
             },
             comments: {
               orderBy: { createdAt: 'asc' },
@@ -113,9 +119,9 @@ export class PocService {
           e.type === 'STATUS_CHANGED' && e.toStatus
             ? `Marked ${STATUS_LABELS[e.toStatus].toLowerCase()}`
             : e.type === 'ESCALATED' && e.toLevel
-              ? `Escalated to level ${e.toLevel}`
+              ? `Escalated to level ${e.toLevel}${e.reason === 'TAT_BREACH' ? ': no action within 48h' : e.reason === 'ON_LEAVE' ? ': owner on leave' : ''}`
               : (POC_EVENT_LABELS[e.type] ?? 'Updated'),
-        note: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'ESCALATED' ? e.note : null,
+        note: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'ESCALATED' || e.type === 'REASSIGNED' ? e.note : null,
         at: e.createdAt,
       })),
       ...t.comments.map((c): ThreadItem => ({
@@ -138,6 +144,7 @@ export class PocService {
       subCategory: t.subCategory,
       student: t.student,
       currentLevel: t.currentLevel,
+      critical: t.critical,
       tatDeadline: t.tatDeadline,
       createdAt: t.createdAt,
       resolvedAt: t.resolvedAt,
@@ -159,6 +166,12 @@ export class PocService {
 
   /** Reply to the student. The first reply on a fresh ticket also marks it in progress. */
   async comment(pocId: string, ticketId: string, body: string) {
+    await this.reply(pocId, ticketId, body);
+    return this.detail(pocId, ticketId);
+  }
+
+  /** The reply itself, without loading the ticket afterwards (the bulk action reuses this). */
+  private async reply(pocId: string, ticketId: string, body: string) {
     await this.act(pocId, ticketId, async (tx, t) => {
       const comment = await tx.comment.create({
         data: { ticketId, authorId: pocId, body, visibility: 'PUBLIC' },
@@ -169,7 +182,6 @@ export class PocService {
       });
       return NEEDS_ACK.includes(t.status) ? this.markInProgress(tx, t, pocId, false) : null;
     });
-    return this.detail(pocId, ticketId);
   }
 
   async setInProgress(pocId: string, ticketId: string) {
@@ -188,10 +200,17 @@ export class PocService {
    *    The reason is for staff only: the student just sees that it was escalated.
    */
   async close(pocId: string, ticketId: string, outcome: CloseOutcome, note: string) {
+    await this.applyOutcome(pocId, ticketId, outcome, note);
+    // The POC no longer has access once the ticket moves up, so there is no detail to return.
+    if (outcome === 'ESCALATED') return { escalated: true as const };
+    return this.detail(pocId, ticketId);
+  }
+
+  /** One ticket, one outcome: the single place this logic lives, used by the ticket page and the bulk action. */
+  private async applyOutcome(pocId: string, ticketId: string, outcome: CloseOutcome, note: string) {
     if (outcome === 'ESCALATED') {
       await this.act(pocId, ticketId, (tx, t) => this.escalate(tx, t, pocId, note));
-      // The POC no longer has access once the ticket moves up, so there is no detail to return.
-      return { escalated: true as const };
+      return;
     }
 
     await this.act(pocId, ticketId, async (tx, t) => {
@@ -212,7 +231,28 @@ export class PocService {
       await tx.notification.create({ data: { userId: t.studentId, type: 'RESOLVED', ticketId } });
       return { status, resolvedAt: new Date(), resolvedLevel: t.currentLevel, tatDeadline: null };
     });
-    return this.detail(pocId, ticketId);
+  }
+
+  /**
+   * Apply one action to many tickets (up to MAX_BULK). Each ticket goes through exactly the same rules
+   * as when handled alone (scope, locking, history, notification to its own student, a fresh TAT where
+   * it applies), in its own transaction. A ticket that cannot be changed (already finished, moved by
+   * someone else, nobody on duty above) is reported back and does not stop the rest.
+   */
+  async bulk(pocId: string, input: { ticketIds: string[]; action: BulkAction; note: string }) {
+    const ids = [...new Set(input.ticketIds)];
+    const failed: { id: string; reason: string }[] = [];
+    let done = 0;
+    for (const id of ids) {
+      try {
+        if (input.action === 'REPLY') await this.reply(pocId, id, input.note);
+        else await this.applyOutcome(pocId, id, input.action, input.note);
+        done++;
+      } catch (err) {
+        failed.push({ id, reason: err instanceof HttpException ? err.message : 'Could not update this ticket.' });
+      }
+    }
+    return { done, failed };
   }
 
   private async escalate(
@@ -237,6 +277,8 @@ export class PocService {
         toStatus: 'ESCALATED',
         fromLevel: t.currentLevel,
         toLevel: nextLevel,
+        assigneeId: owner.userId,
+        reason: 'MANUAL',
         note,
       },
     });
@@ -304,6 +346,10 @@ export class PocService {
         data: {
           assignedPocId: pocId,
           tatDeadline: new Date(Date.now() + TAT_HOURS * 60 * 60 * 1000),
+          // A POC acting restarts the clock: the warning can be sent again, and a ticket that
+          // was flagged critical because nobody acted is no longer ignored.
+          tatWarnedAt: null,
+          critical: false,
           ...changes,
         },
       });
