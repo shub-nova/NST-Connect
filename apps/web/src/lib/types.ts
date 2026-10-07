@@ -41,6 +41,8 @@ export interface TicketSummary {
   subCategory: SubCategory | null;
   status: TicketStatus;
   statusLabel: string;
+  /** The student closed this ticket themselves. */
+  closedByYou: boolean;
   assignedTo: string | null;
   createdAt: string;
   updatedAt: string;
@@ -61,11 +63,21 @@ export interface Attachment {
   sizeBytes: number;
 }
 
+export interface TicketFeedback {
+  rating: "SATISFIED" | "OKAY" | "NOT_SATISFIED";
+  comment: string | null;
+  /** Answers can be changed for a week. */
+  canChange: boolean;
+}
+
 export interface TicketDetail extends TicketSummary {
   description: string;
   resolvedAt: string | null;
   /** True when the ticket is finished and the student may reopen it. */
   canReopen: boolean;
+  /** True once the ticket is Solved or Closed. */
+  canGiveFeedback: boolean;
+  feedback: TicketFeedback | null;
   timeline: TimelineEntry[];
   attachments: Attachment[];
 }
@@ -82,10 +94,22 @@ export interface UploadTicket {
   expiresInSeconds: number;
 }
 
+/** One page of the POC queue, sorted and paged by the server. */
+export interface PocQueuePage {
+  tickets: PocQueueTicket[];
+  /** Tickets in this tab, across all pages. */
+  total: number;
+  /** Tickets in each tab, for the tab labels. */
+  counts: { open: number; done: number };
+  nextCursor: string | null;
+}
+
 export interface PocQueueTicket {
   id: string;
   title: string;
   status: TicketStatus;
+  /** The student closed it themselves, so it is no longer open. */
+  closedByStudent: boolean;
   currentLevel: number;
   /** Nobody acted at the top level either. */
   critical: boolean;
@@ -137,8 +161,6 @@ export interface AnalyticsHeadline {
   avgHoursAtMyLevel: number | null;
   actionNeeded: number;
   overdue: number;
-  /** Open tickets whose 48h runs out within 24 hours. */
-  dueIn24h: number;
   critical: number;
   total: number;
   autoEscalatedFrom: number;
@@ -146,6 +168,8 @@ export interface AnalyticsHeadline {
   manualEscalations: number;
   reopened: number;
   reopenRatePct: number | null;
+  /** Student feedback on tickets this scope solved or closed. The percentage needs enough answers. */
+  feedback: { responses: number; satisfied: number; okay: number; notSatisfied: number; satisfactionPct: number | null };
 }
 
 export interface AnalyticsPerson {
@@ -173,6 +197,8 @@ export interface AnalyticsData {
   headline: AnalyticsHeadline;
   /** Finished tickets by days taken; the last entry means that many days or more. */
   finishTimes: { days: number; count: number }[];
+  /** The two-word phrases students repeat most in their feedback comments (never the comments themselves). */
+  feedbackTerms: { term: string; count: number }[];
   categories: { id: string; name: string; count: number; previous: number }[];
   subCategories: { id: string; name: string; category: string; count: number; previous: number; avgFinishHours: number | null }[];
   trend: { day: string; created: number; solved: number; closed: number; autoEscalated: number; manualEscalated: number }[];

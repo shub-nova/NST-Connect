@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronDown, ChevronLeft, Download, FileSpreadsheet, FileText, Film, Image as ImageIcon, Presentation, type LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import type { TicketStatus } from "@/lib/types";
 
@@ -123,9 +124,7 @@ export function PillSelect({ label, value, onChange, children, block }: { label:
       >
         {children}
       </select>
-      <svg viewBox="0 0 20 20" className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M5 7.5l5 5 5-5" />
-      </svg>
+      <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" strokeWidth={2} aria-hidden="true" />
     </div>
   );
 }
@@ -170,10 +169,154 @@ export function Segmented<T extends string | number>({ label, value, options, on
 export function BackLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link href={href} className="-ml-1 inline-flex items-center text-sm font-medium text-brand hover:underline">
-      <svg viewBox="0 0 20 20" className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12.5 5l-5 5 5 5" />
-      </svg>
+      <ChevronLeft className="h-5 w-5 shrink-0" strokeWidth={2} aria-hidden="true" />
       {children}
     </Link>
+  );
+}
+
+// ---- category and sub-category emojis: tell tickets apart at a glance ------------------------------
+
+const CATEGORY_LOOK: { test: RegExp; emoji: string }[] = [
+  { test: /hostel|accommodation/i, emoji: "🏠" },
+  { test: /mess|food|canteen/i, emoji: "🍽️" },
+  { test: /academ|teaching|curriculum/i, emoji: "📖" },
+  { test: /exam|grading|evaluation/i, emoji: "🖊️" },
+  { test: /attendance|leave/i, emoji: "🙋" },
+  { test: /fee|financ|scholarship/i, emoji: "💳" },
+  { test: /document/i, emoji: "📁" },
+  { test: /internship|placement|mentoring/i, emoji: "💼" },
+  // "Student Life" is checked before "Campus", because its full name also contains "Campus".
+  { test: /student|activit|life/i, emoji: "🎉" },
+  { test: /campus|infrastructure|\bit\b|facilit/i, emoji: "🏫" },
+];
+
+/**
+ * One emoji per sub-category, matched on its name, so the emoji says what each ticket is about.
+ * Order matters where names overlap.
+ */
+const SUB_CATEGORY_EMOJI: { test: RegExp; emoji: string }[] = [
+  // Hostel
+  { test: /room allocation|retention/i, emoji: "🚪" },
+  { test: /maintenance|repairs/i, emoji: "🛠️" },
+  { test: /safety & night|night-time/i, emoji: "🛡️" },
+  { test: /hostel wi-?fi|power reliab/i, emoji: "📶" },
+  { test: /laundry/i, emoji: "👕" },
+  { test: /stay policy/i, emoji: "📜" },
+  { test: /belongings|luggage/i, emoji: "🧳" },
+  // Mess
+  { test: /food safety/i, emoji: "⚠️" },
+  { test: /mess food|hygiene|nutrition/i, emoji: "🥗" },
+  { test: /coupon|meal access/i, emoji: "🎟️" },
+  // Academics
+  { test: /faculty|teaching/i, emoji: "🧑‍🏫" },
+  { test: /lab session/i, emoji: "💻" },
+  { test: /revision|practice gaps/i, emoji: "📚" },
+  { test: /curriculum pace|deadline density|workload/i, emoji: "⏱️" },
+  { test: /course sequencing|track suggestion/i, emoji: "🧭" },
+  { test: /weightage/i, emoji: "⚖️" },
+  // Exams
+  { test: /exam platform/i, emoji: "🖥️" },
+  { test: /medical\/emergency exam|exam resched/i, emoji: "🏥" },
+  { test: /exam eligibility|passing criteria/i, emoji: "📝" },
+  { test: /re-?evaluation|marks discrepancy/i, emoji: "🔍" },
+  { test: /integrity|unfair means/i, emoji: "🚫" },
+  { test: /contest reschedule/i, emoji: "🏆" },
+  { test: /backlog|summer-term/i, emoji: "📓" },
+  // Attendance & leave
+  { test: /attendance deduction|discrepancy disputes/i, emoji: "📅" },
+  { test: /face-?recognition|attendance system/i, emoji: "📸" },
+  { test: /medical leave|health-related/i, emoji: "🩺" },
+  { test: /personal leave|emergency \//i, emoji: "🚨" },
+  { test: /extended leave|travel-home/i, emoji: "✈️" },
+  // Fees
+  { test: /fee receipt|invoice/i, emoji: "🧾" },
+  { test: /fee structure|breakdown/i, emoji: "💰" },
+  { test: /scholarship/i, emoji: "🎓" },
+  { test: /education loan|bank verification/i, emoji: "🏦" },
+  // Documents
+  { test: /bonafide|transfer|migration certificate/i, emoji: "🗂️" },
+  { test: /gap certificate/i, emoji: "📃" },
+  { test: /document submission/i, emoji: "📤" },
+  // Internship & placement
+  { test: /internship discontinuation|change of plan/i, emoji: "🚶" },
+  { test: /monthly internship report/i, emoji: "✅" },
+  { test: /internship offer|mandatory-requirement/i, emoji: "🤝" },
+  { test: /interview scheduling/i, emoji: "🎤" },
+  { test: /project \/ assignment|grading discrepancy/i, emoji: "🧮" },
+  { test: /continuity|progression manager/i, emoji: "👤" },
+  { test: /mentoring cadence/i, emoji: "💬" },
+  { test: /career|profile review/i, emoji: "🧑‍💼" },
+  // Campus & IT
+  { test: /timetable|room-change/i, emoji: "⏰" },
+  { test: /campus wi-?fi|it connectivity/i, emoji: "🌐" },
+  { test: /portal|lms|erp|account access/i, emoji: "🔑" },
+  { test: /robotics|sports/i, emoji: "🤖" },
+  { test: /transport|bus/i, emoji: "🚌" },
+  { test: /macbook|device|adld/i, emoji: "⌨️" },
+  // Student life
+  { test: /club-academic|timing clash/i, emoji: "🔀" },
+  { test: /shared lab|equipment access/i, emoji: "📦" },
+  { test: /activity awareness|communication/i, emoji: "📣" },
+  { test: /information fragmentation|opportunity/i, emoji: "🧩" },
+  { test: /teammate|collaborator/i, emoji: "🧑‍🤝‍🧑" },
+  { test: /extracurricular/i, emoji: "🎨" },
+  { test: /club functioning/i, emoji: "👥" },
+  // Other
+  { test: /other \(please describe\)|^other$/i, emoji: "❓" },
+];
+
+/** The emoji for a ticket's sub-category, shown large with no background (falls back to the category's emoji). */
+export function SubCategoryIcon({ category, subCategory, size = "md" }: { category: string; subCategory?: string | null; size?: "md" | "lg" }) {
+  const look = CATEGORY_LOOK.find((l) => l.test.test(category)) ?? { emoji: "❓" };
+  const emoji = (subCategory ? SUB_CATEGORY_EMOJI.find((i) => i.test.test(subCategory))?.emoji : undefined) ?? look.emoji;
+  const box = size === "lg" ? "h-14 w-14 text-[44px]" : "h-12 w-12 text-[34px]";
+  const label = subCategory ?? category;
+  return (
+    <span className={`inline-flex shrink-0 select-none items-center justify-center leading-none ${box}`} role="img" aria-label={label} title={label}>
+      {emoji}
+    </span>
+  );
+}
+
+// ---- attachments: file cards with a type icon, name, size and a download action ------------------
+
+function fileLook(mimeType: string): { icon: LucideIcon; tint: string } {
+  if (mimeType.startsWith("image/")) return { icon: ImageIcon, tint: "bg-violet-50 text-violet-600" };
+  if (mimeType.startsWith("video/")) return { icon: Film, tint: "bg-pink-50 text-pink-600" };
+  if (mimeType === "application/pdf") return { icon: FileText, tint: "bg-red-50 text-red-600" };
+  if (mimeType.includes("spreadsheetml") || mimeType === "text/csv") return { icon: FileSpreadsheet, tint: "bg-emerald-50 text-emerald-600" };
+  if (mimeType.includes("presentationml")) return { icon: Presentation, tint: "bg-orange-50 text-orange-600" };
+  if (mimeType.includes("wordprocessingml")) return { icon: FileText, tint: "bg-blue-50 text-blue-600" };
+  return { icon: FileText, tint: "bg-slate-100 text-slate-600" };
+}
+
+/** The files on a ticket: one card each, the whole card downloads. */
+export function AttachmentList({ items, onDownload, size }: { items: { id: string; fileName: string; mimeType: string; sizeBytes: number }[]; onDownload: (id: string) => void; size: (bytes: number) => string }) {
+  return (
+    <ul className="grid gap-2.5 sm:grid-cols-2">
+      {items.map((a) => {
+        const look = fileLook(a.mimeType);
+        const Glyph = look.icon;
+        return (
+          <li key={a.id}>
+            <button
+              onClick={() => onDownload(a.id)}
+              title={`Download ${a.fileName}`}
+              className="group flex w-full items-center gap-3 rounded-xl border border-line bg-white p-3 text-left transition hover:border-brand hover:shadow-sm"
+            >
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${look.tint}`}>
+                <Glyph className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-ink">{a.fileName}</span>
+                <span className="block text-xs text-muted">{size(a.sizeBytes)}</span>
+              </span>
+              <Download className="h-4 w-4 shrink-0 text-muted transition group-hover:text-brand" strokeWidth={2} aria-label="Download" />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
