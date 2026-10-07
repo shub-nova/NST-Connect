@@ -5,8 +5,14 @@ import type { AuthUser } from '../common/decorators';
 import { parseOrThrow } from '../common/zod';
 import { Role } from '../generated/prisma/client';
 import { MAX_BULK, PocService } from './poc.service';
+import { MAX_PAGE_SIZE } from './queue-query';
 
-const querySchema = z.object({ view: z.enum(['open', 'done']).default('open') });
+const querySchema = z.object({
+  view: z.enum(['open', 'done']).default('open'),
+  sort: z.enum(['time-left', 'oldest', 'newest']).optional(),
+  limit: z.coerce.number().int().min(1).max(MAX_PAGE_SIZE).optional(),
+  cursor: z.string().max(400).optional(),
+});
 const commentSchema = z.object({ body: z.string().trim().min(1, 'Write a reply').max(5000) });
 const statusSchema = z.object({ status: z.literal('IN_PROGRESS') });
 const closeSchema = z.object({
@@ -37,7 +43,7 @@ export class PocController {
 
   @Get('queue')
   queue(@CurrentUser() user: AuthUser, @Query() query: unknown) {
-    return this.poc.queue(user.id, parseOrThrow(querySchema, query).view);
+    return this.poc.queue(user.id, parseOrThrow(querySchema, query));
   }
 
   /** Solve, close, escalate or reply to many tickets at once. Declared before the :id routes. */

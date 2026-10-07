@@ -4,6 +4,17 @@ import { EventType, Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { STATUS_LABELS } from '../tickets/student-view';
+import {
+  DEFAULT_PAGE_SIZE,
+  decodeCursor,
+  defaultSort,
+  encodeCursor,
+  scopeSql,
+  sortSpec,
+  statusSql,
+  type QueueSort,
+  type QueueView,
+} from './queue-query';
 
 /** Every POC action restarts the 48-hour clock for the current level (cleared on resolve). */
 const TAT_HOURS = 48;
@@ -24,6 +35,7 @@ const POC_EVENT_LABELS: Partial<Record<EventType, string>> = {
   CLOSED: 'Closed',
   REOPENED: 'Reopened',
   REASSIGNED: 'Handed to another POC',
+  CLOSED_BY_STUDENT: 'Closed by the student',
 };
 
 export type CloseOutcome = 'SOLVED' | 'CLOSED' | 'ESCALATED';
@@ -43,23 +55,49 @@ export class PocService {
   ) {}
 
   /** The category+level pairs this POC is on duty for. A POC only ever sees tickets in these. */
-  private async scope(pocId: string): Promise<Prisma.TicketWhereInput[]> {
+  private async pairs(pocId: string): Promise<{ categoryId: string; level: number }[]> {
     const assignments = await this.prisma.pOCAssignment.findMany({ where: { userId: pocId, active: true } });
-    return assignments.map((a) => ({ categoryId: a.categoryId, currentLevel: a.level }));
+    return assignments.map((a) => ({ categoryId: a.categoryId, level: a.level }));
   }
 
-  async queue(pocId: string, view: 'open' | 'done') {
-    const scope = await this.scope(pocId);
-    if (!scope.length) return { tickets: [] };
+  private async scope(pocId: string): Promise<Prisma.TicketWhereInput[]> {
+    return (await this.pairs(pocId)).map((p) => ({ categoryId: p.categoryId, currentLevel: p.level }));
+  }
 
-    const tickets = await this.prisma.ticket.findMany({
-      where: view === 'done' ? { status: { in: FINISHED }, OR: scope } : { status: { notIn: FINISHED }, OR: scope },
-      orderBy: view === 'done' ? { resolvedAt: 'desc' } : { createdAt: 'asc' },
-      take: 100,
+  /**
+   * One page of the queue, sorted by the database and paged with a cursor. Also returns how many tickets
+   * are open and done in total, so the POC always knows how much is waiting beyond what is on screen.
+   */
+  async queue(pocId: string, q: { view: QueueView; sort?: QueueSort; limit?: number; cursor?: string }) {
+    const pairs = await this.pairs(pocId);
+    const counts = await this.counts(pairs);
+    if (!pairs.length) return { tickets: [], total: 0, counts, nextCursor: null as string | null };
+
+    const view = q.view;
+    const limit = q.limit ?? DEFAULT_PAGE_SIZE;
+    const spec = sortSpec(view, q.sort ?? defaultSort(view));
+    const after = q.cursor ? decodeCursor(q.cursor) : null;
+    const afterSql = after
+      ? Prisma.sql`AND (${spec.k1}, ${spec.k2}, t.id) ${spec.op} (${after.k1}::float8, ${after.k2}::float8, ${after.id}::uuid)`
+      : Prisma.empty;
+
+    const rows = await this.prisma.$queryRaw<{ id: string; k1: number; k2: number }[]>`
+      SELECT t.id, ${spec.k1} AS k1, ${spec.k2} AS k2
+        FROM ticket t
+       WHERE ${scopeSql(pairs)} AND ${statusSql(view)} ${afterSql}
+       ORDER BY k1 ${spec.dir}, k2 ${spec.dir}, t.id ${spec.dir}
+       LIMIT ${limit + 1}`;
+    const page = rows.slice(0, limit);
+    const last = page[page.length - 1];
+    const nextCursor = rows.length > limit && last ? encodeCursor({ k1: Number(last.k1), k2: Number(last.k2), id: last.id }) : null;
+
+    const found = await this.prisma.ticket.findMany({
+      where: { id: { in: page.map((r) => r.id) } },
       select: {
         id: true,
         title: true,
         status: true,
+        closedByStudent: true,
         currentLevel: true,
         critical: true,
         tatDeadline: true,
@@ -70,7 +108,20 @@ export class PocService {
         student: { select: { name: true } },
       },
     });
-    return { tickets };
+    const byId = new Map(found.map((t) => [t.id, t]));
+    const tickets = page.map((r) => byId.get(r.id)).filter((t): t is NonNullable<typeof t> => !!t);
+    return { tickets, total: counts[view], counts, nextCursor };
+  }
+
+  /** How many tickets are open and done for this POC (shown on the tabs). */
+  private async counts(pairs: { categoryId: string; level: number }[]) {
+    if (!pairs.length) return { open: 0, done: 0 };
+    const or = pairs.map((p) => ({ categoryId: p.categoryId, currentLevel: p.level }));
+    const [open, done] = await Promise.all([
+      this.prisma.ticket.count({ where: { status: { notIn: FINISHED }, OR: or } }),
+      this.prisma.ticket.count({ where: { status: { in: FINISHED }, OR: or } }),
+    ]);
+    return { open, done };
   }
 
   /** Full ticket for a POC. Anything outside the POC's category and level is a plain 404. */
