@@ -22,7 +22,8 @@
     "db:migrate": "prisma migrate dev && prisma generate",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
-    "db:activate-staff": "tsx prisma/activate-staff.ts"
+    "db:activate-staff": "tsx prisma/activate-staff.ts",
+    "db:demo-data": "tsx prisma/demo-data.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
