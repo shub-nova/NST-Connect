@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ArrowDownLeft, ArrowUpRight, Check, Clock, Inbox, RotateCcw, Smile, Target, Ticket, X, Zap } from "lucide-react";
+import { Children, useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiError, api } from "@/lib/api";
 import type { AnalyticsBreakdownRow, AnalyticsData, AnalyticsHeadline } from "@/lib/types";
-import { SendNote, ReceivedNotes } from "./AdminNotes";
+import { SendNote } from "./AdminNotes";
 import { ErrorNote, PillSelect, inputCls } from "./ui";
 
 // ---- formatting ----------------------------------------------------------------------------
@@ -38,41 +39,53 @@ const ACCENT: Record<Accent, string> = {
 };
 
 const ICONS = {
-  inbox: "M4 13l2-8h12l2 8v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zM4 13h5l1 2h4l1-2h5",
-  clock: "M12 7v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  check: "M5 13l4 4L19 7",
-  x: "M6 6l12 12M18 6L6 18",
-  up: "M7 17L17 7M8 7h9v9",
-  down: "M17 7L7 17M16 17H7V8",
-  bolt: "M13 3L5 14h6l-1 7 8-11h-6l1-7z",
-  rotate: "M4 12a8 8 0 0114-5.3L20 9M20 4v5h-5M20 12a8 8 0 01-14 5.3L4 15M4 20v-5h5",
-  target: "M12 21a9 9 0 100-18 9 9 0 000 18zM12 16a4 4 0 100-8 4 4 0 000 8z",
-  tickets: "M4 7a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 000 4v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2a2 2 0 000-4V7z",
+  inbox: Inbox,
+  clock: Clock,
+  check: Check,
+  x: X,
+  up: ArrowUpRight,
+  down: ArrowDownLeft,
+  bolt: Zap,
+  rotate: RotateCcw,
+  target: Target,
+  tickets: Ticket,
+  smile: Smile,
 } as const;
 
 function Icon({ name, className = "h-[18px] w-[18px]" }: { name: keyof typeof ICONS; className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={ICONS[name]} />
-    </svg>
-  );
+  const Glyph = ICONS[name];
+  return <Glyph className={className} strokeWidth={2} aria-hidden="true" />;
 }
 
 /** Stat cards grow to fill each row, so there are never gaps however many there are. */
 function Kpi({ label, value, icon, accent, bad }: { label: string; value: string; icon: keyof typeof ICONS; accent: Accent; bad?: boolean }) {
   return (
-    <div className={`${cardShell} flex grow basis-[calc(50%-0.5rem)] flex-col justify-center p-4 sm:basis-[230px] sm:p-5`}>
+    <div className={`${cardShell} flex min-w-0 flex-col justify-center p-4 sm:p-5`}>
       <div className="flex items-center gap-4">
         <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${ACCENT[bad ? "red" : accent]}`}>
           <Icon name={icon} className="h-5 w-5" />
         </span>
         <div className="min-w-0">
           <p className="text-[13px] font-medium leading-4 text-muted">{label}</p>
-          <p className={`mt-1 text-[28px] font-bold leading-8 tracking-tight ${bad ? "text-red-600" : "text-ink"}`}>{value}</p>
+          <p className={`mt-1 text-[28px] font-semibold leading-8 tracking-tight ${bad ? "text-red-600" : "text-slate-700"}`}>{value}</p>
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * The stat cards, four to a row. When the count is not a multiple of four, the last row stretches to fill the
+ * width, so a row is never left with one small card or an empty gap.
+ */
+function KpiGrid({ children }: { children: React.ReactNode }) {
+  const n = Children.toArray(children).length;
+  const layout =
+    n % 4 === 0
+      ? "grid grid-cols-2 lg:grid-cols-4"
+      : "flex flex-wrap [&>*]:grow [&>*]:basis-[calc(50%-0.5rem)] sm:[&>*]:basis-[210px] lg:[&>*]:basis-[calc(25%-1rem)]";
+  // On a phone (two columns) an odd last card spans the row instead of sitting half empty.
+  return <div className={`${layout} gap-4 sm:gap-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2`}>{children}</div>;
 }
 
 /** A card that grows to share its row with its neighbours. */
@@ -308,12 +321,12 @@ interface Slice {
 }
 
 /** A donut that shows the hovered slice in its centre, so nothing floats over the chart. */
-function Donut({ slices, total }: { slices: Slice[]; total: number }) {
+function Donut({ slices, total, idle, inline }: { slices: Slice[]; total: number; /** Centre text when nothing is hovered (defaults to the total). */ idle?: { value: string; label: string }; /** Fixed size, for sitting beside other content. */ inline?: boolean }) {
   const [active, setActive] = useState<number | null>(null);
   const on = active === null ? null : slices[active];
   return (
     <div
-      className="relative mx-auto h-44 w-44"
+      className={inline ? "relative h-40 w-40 shrink-0" : "relative mx-auto h-44 w-44"}
       // The chart's own "mouse leave" is unreliable (gaps between slices, fast exits), so the selection
       // is cleared whenever the pointer is over anything that is not a slice, or leaves the donut.
       onMouseOver={(e) => {
@@ -349,8 +362,8 @@ function Donut({ slices, total }: { slices: Slice[]; total: number }) {
           </>
         ) : (
           <>
-            <span className="text-2xl font-bold leading-7 text-ink">{total}</span>
-            <span className="text-[11px] text-muted">total</span>
+            <span className="text-2xl font-bold leading-7 text-ink">{idle?.value ?? total}</span>
+            <span className="text-[11px] text-muted">{idle?.label ?? "total"}</span>
           </>
         )}
       </div>
@@ -556,9 +569,6 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      {/* Notes the admin left for this POC */}
-      {!filters && <ReceivedNotes />}
-
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="inline-flex rounded-full bg-surface p-1" role="group" aria-label="Period">
@@ -608,20 +618,15 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
           {/* Stat cards: personal and operational numbers (not on Overall) */}
           {!onlyTopics && (
             <>
-              <Row>
+              <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-ink">Summary</h2>
+              <KpiGrid>
                 <Kpi
                   icon="inbox"
                   accent="blue"
                   label="Action needed / total"
                   value={`${h.actionNeeded} / ${h.total}`}
                   bad={!!(h.overdue || h.critical)}
-                />
-                <Kpi
-                  icon="clock"
-                  accent="amber"
-                  label={finalLevel ? "Turning critical in 24h" : "Will escalate in 24h"}
-                  value={String(h.dueIn24h)}
-                  bad={h.dueIn24h > 0}
                 />
                 <Kpi icon="check" accent="green" label="Solved" value={String(h.solved)} />
                 <Kpi icon="x" accent="slate" label="Closed" value={String(h.closed)} />
@@ -638,15 +643,20 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                   <Kpi icon="target" accent="green" label="Finished within 48h" value={fmtPct(h.withinTatPct)} />
                 )}
                 {!finalLevel && <Kpi icon="rotate" accent="violet" label="Reopened" value={fmtPct(h.reopenRatePct)} />}
-              </Row>
+                <Kpi icon="smile" accent="green" label="Satisfaction" value={fmtPct(h.feedback.satisfactionPct)} />
+              </KpiGrid>
+              </div>
 
+              <div className="space-y-4">
+              <h2 className="text-lg font-semibold text-ink">Analytics</h2>
               <Row>
                 {!finalLevel && (
                   <Section title="Escalations" hint="Automatic: nobody acted within 48h. Manual: a POC chose to escalate.">
                     {data.trend.some((p) => p.autoEscalated || p.manualEscalated) ? (
                       <>
                         <Legend items={[{ label: "Manual", color: COLORS.amber }, { label: "Automatic (TAT)", color: COLORS.red }]} />
-                        <div className="h-56">
+                        <div className="relative min-h-[224px] flex-1">
+                          <div className="absolute inset-0">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={data.trend} margin={{ left: -24, right: 4, top: 4 }} barCategoryGap="22%">
                               <Gradients />
@@ -658,6 +668,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                               <Bar dataKey="autoEscalated" name="Automatic" stackId="e" fill="url(#gRed)" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           </ResponsiveContainer>
+                          </div>
                         </div>
                       </>
                     ) : (
@@ -667,9 +678,10 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                 )}
 
                 {!firstLevel && (
-                  <Section title="How long tickets took to finish" hint="From when the student raised it until it was Solved or Closed, across all levels if it was escalated">
+                  <Section title="How long tickets took to finish" hint="From raised to Solved or Closed, across all levels">
                     {data.finishTimes.some((b) => b.count) ? (
-                      <div className="h-56">
+                      <div className="relative min-h-[224px] flex-1">
+                        <div className="absolute inset-0">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart
                             data={data.finishTimes.map((b, i, all) => ({ ...b, label: i === all.length - 1 ? `${b.days}+` : String(b.days) }))}
@@ -680,10 +692,11 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                             <CartesianGrid stroke={COLORS.grid} vertical={false} strokeDasharray="3 3" />
                             <XAxis dataKey="label" tick={axisTick} axisLine={false} tickLine={false} label={{ value: "days to finish", position: "insideBottom", offset: -4, fontSize: 11, fill: COLORS.muted }} height={44} />
                             <YAxis allowDecimals={false} tick={axisTick} axisLine={false} tickLine={false} />
-                            <Tooltip cursor={{ fill: "#f5f6f8" }} contentStyle={tooltipStyle} formatter={(v) => [`${v} ticket${v === 1 ? "" : "s"}`, ""]} labelFormatter={(l) => `${l} day${l === "1" ? "" : "s"}`} />
+                            <Tooltip cursor={{ fill: "#f5f6f8" }} contentStyle={tooltipStyle} separator="" formatter={(v) => [`${v} ticket${v === 1 ? "" : "s"}`, ""]} labelFormatter={(l) => `${l} day${l === "1" ? "" : "s"}`} />
                             <Bar dataKey="count" name="Tickets" fill="url(#gBlue)" radius={[6, 6, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
+                        </div>
                       </div>
                     ) : (
                       <Empty />
@@ -693,6 +706,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
 
 
               </Row>
+              </div>
 
               {data.view !== "admin" && (
                 <Section title="Time left on open tickets" hint="How much of the 48h is left. Critical tickets have no clock.">
@@ -711,6 +725,57 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               {showShares && data.breakdown && (
                 <ShareDonuts rows={data.breakdown} final={finalLevel} />
               )}
+
+              <Section title="Student feedback" hint="Anonymous answers on tickets solved or closed">
+                {h.feedback.responses === 0 ? (
+                  <Empty text="No feedback yet." />
+                ) : (
+                  <div className="flex flex-wrap items-stretch gap-x-10 gap-y-6">
+                    {/* Left: the donut and its key, centred against the phrases beside it. */}
+                    <div className="flex flex-col">
+                      <div className="flex flex-1 flex-wrap items-center gap-x-8 gap-y-4">
+                    <Donut
+                      inline
+                      total={h.feedback.responses}
+                      idle={h.feedback.satisfactionPct === null ? { value: String(h.feedback.responses), label: "answers" } : { value: `${h.feedback.satisfactionPct}%`, label: "satisfied" }}
+                      slices={[
+                        { id: "satisfied", name: "Satisfied", value: h.feedback.satisfied, color: COLORS.green },
+                        { id: "okay", name: "Okay", value: h.feedback.okay, color: COLORS.amber },
+                        { id: "not", name: "Not satisfied", value: h.feedback.notSatisfied, color: COLORS.red },
+                      ].filter((x) => x.value > 0)}
+                    />
+
+                    <ul className="w-56 space-y-3">
+                      {[
+                        { label: "Satisfied", n: h.feedback.satisfied, color: COLORS.green },
+                        { label: "Okay", n: h.feedback.okay, color: COLORS.amber },
+                        { label: "Not satisfied", n: h.feedback.notSatisfied, color: COLORS.red },
+                      ].map((x) => (
+                        <li key={x.label} className="flex items-center gap-3 text-sm">
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: x.color }} />
+                          <span className="flex-1 text-ink">{x.label}</span>
+                          <span className="font-semibold tabular-nums text-ink">{x.n}</span>
+                          <span className="w-10 text-right tabular-nums text-muted">{Math.round((x.n / h.feedback.responses) * 100)}%</span>
+                        </li>
+                      ))}
+                      {h.feedback.satisfactionPct === null && <li className="pt-1 text-xs text-muted">A percentage appears once at least 5 students have answered.</li>}
+                    </ul>
+                      </div>
+                    </div>
+
+                    {data.feedbackTerms.length > 0 && (
+                      <div className="-mt-2 min-w-[16rem] flex-1 border-line/70 lg:border-l lg:pl-10">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted">Most repeated phrases</p>
+                        <div className="mt-4">
+                          <BarList
+                            rows={data.feedbackTerms.slice(0, 4).map((p) => ({ key: p.term, label: p.term, value: p.count }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Section>
 
               {data.breakdown && data.breakdown.length > 1 && !showShares && (
                 <Breakdown title={data.view === "admin" && !categoryId ? "By category" : "By POC"} rows={data.breakdown} />
@@ -731,11 +796,6 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                     <p className="text-[13px] font-medium text-muted">Tickets raised in {data.categories[0].name}</p>
                     <p className="text-3xl font-bold leading-9 tracking-tight text-ink">{data.categories[0].count}</p>
                   </div>
-                  <p className="text-sm text-muted sm:ml-auto">
-                    {data.categories[0].count === data.categories[0].previous
-                      ? "Same as the previous period"
-                      : `${data.categories[0].count > data.categories[0].previous ? "Up" : "Down"} ${Math.abs(data.categories[0].count - data.categories[0].previous)} from the previous ${data.range.days} days (${data.categories[0].previous})`}
-                  </p>
                 </div>
               )}
 
@@ -768,7 +828,6 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               <summary className="cursor-pointer font-medium text-ink">How these numbers are calculated</summary>
               <ul className="mt-3 list-disc space-y-1.5 pl-5">
                 <li><b>How long tickets took</b>: days from when the student raised the ticket until a POC marked it Solved or Closed, rounded up. Only finished tickets count.</li>
-                <li><b>Will escalate in 24h</b>: open tickets whose 48h runs out within a day. They move up a level (or turn critical at L3) unless the POC acts.</li>
                 <li><b>Action needed / total</b>: open tickets waiting on the POC, out of all tickets they were involved with in the period.</li>
                 <li><b>Auto-escalated</b>: the POC did not act within 48h, so the system moved the ticket up. &quot;From me&quot; means I held it; &quot;to me&quot; means I inherited it.</li>
                 <li><b>Solved / Closed / Escalated</b>: outcomes the POC chose themselves in the period.</li>
