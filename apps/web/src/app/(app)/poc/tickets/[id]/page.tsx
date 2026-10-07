@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { Avatar, BackLink, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
+import { AttachmentList, BackLink, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatSize } from "@/lib/files";
 import type { CloseOutcome, PocTicketDetail } from "@/lib/types";
@@ -130,36 +130,38 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
         </p>
       )}
 
-      <section className="space-y-5 rounded-2xl border border-line bg-white p-4 sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-4">
-            <Avatar name={ticket.category.shortName || ticket.category.name} size="lg" />
+      <section className="space-y-6 rounded-2xl border border-line bg-white p-4 sm:p-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <SubCategoryIcon category={ticket.category.shortName || ticket.category.name} subCategory={ticket.subCategory?.name} size="lg" />
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-ink sm:text-2xl">{ticket.title}</h1>
-              <p className="mt-1 text-sm text-muted">
-                {ticket.category.shortName}
-                {ticket.subCategory ? ` › ${ticket.subCategory.name}` : ""}
+              <h1 className="text-xl font-bold leading-snug text-ink sm:text-2xl">{ticket.title}</h1>
+              <p className="mt-0.5 text-sm text-muted">
+                {ticket.category.shortName || ticket.category.name}
+                {ticket.subCategory ? ` · ${ticket.subCategory.name}` : ""}
               </p>
             </div>
           </div>
-          <StatusBadge status={ticket.status} label={ticket.statusLabel} />
+          <div className="shrink-0 pt-1">
+            <StatusBadge status={ticket.status} label={ticket.statusLabel} />
+          </div>
         </div>
 
-        <dl className="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
-          <div className="flex gap-2 sm:col-span-2">
-            <dt className="text-muted">Student</dt>
-            <dd className="min-w-0 break-words text-ink">
-              {ticket.student.name} <span className="text-muted">· {ticket.student.email}</span>
-            </dd>
+        {/* The facts, as labelled columns */}
+        <dl className={`grid grid-cols-2 gap-x-6 gap-y-4 pt-3 ${!resolved && ticket.tatDeadline ? "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]" : "sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]"}`}>
+          <div className="col-span-2 min-w-0 sm:col-span-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Student</dt>
+            <dd className="mt-1 text-sm font-medium text-ink">{ticket.student.name}</dd>
+            <dd className="truncate text-xs text-muted">{ticket.student.email}</dd>
           </div>
-          <div className="flex gap-2">
-            <dt className="text-muted">Raised</dt>
-            <dd className="text-ink">{timeAgo(ticket.createdAt)}</dd>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Raised</dt>
+            <dd className="mt-1 text-sm text-ink">{timeAgo(ticket.createdAt)}</dd>
           </div>
           {!resolved && ticket.tatDeadline && (
-            <div className="flex gap-2">
-              <dt className="text-muted">Due</dt>
-              <dd className={overdue ? "font-semibold text-red-600" : "text-ink"}>{formatDate(ticket.tatDeadline)}</dd>
+            <div>
+              <dt className="text-xs font-medium uppercase tracking-wide text-muted">Due</dt>
+              <dd className={`mt-1 text-sm ${overdue ? "font-semibold text-red-600" : "text-ink"}`}>{formatDate(ticket.tatDeadline)}</dd>
             </div>
           )}
         </dl>
@@ -167,20 +169,10 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
         <p className="whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{ticket.description}</p>
 
         {ticket.attachments.length > 0 && (
-          <ul className="flex flex-wrap gap-2 border-t border-line pt-5">
-            {ticket.attachments.map((a) => (
-              <li key={a.id}>
-                <button
-                  onClick={() => download(a.id)}
-                  className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:border-brand hover:text-brand"
-                >
-                  <span className="max-w-56 truncate">{a.fileName}</span>
-                  <span className="text-xs text-muted">{formatSize(a.sizeBytes)}</span>
-                  <span className="text-xs font-semibold text-brand">Download</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-3 border-t border-line pt-5">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Attachments · {ticket.attachments.length}</h2>
+            <AttachmentList items={ticket.attachments} onDownload={download} size={formatSize} />
+          </div>
         )}
       </section>
 

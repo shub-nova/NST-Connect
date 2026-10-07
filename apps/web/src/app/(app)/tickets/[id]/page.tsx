@@ -1,8 +1,10 @@
 "use client";
 
+import FeedbackCard from "@/components/FeedbackCard";
+import { CircleCheck, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { Avatar, BackLink, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
+import { AttachmentList, BackLink, Modal, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatSize } from "@/lib/files";
 import { isFinished } from "@/lib/types";
@@ -24,6 +26,9 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
   const [showErrors, setShowErrors] = useState(false);
   const [reopenBusy, setReopenBusy] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,6 +71,22 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
     }
   }
 
+  // The student closes their own ticket: it leaves the team's queue, and can be reopened later.
+  async function closeTicket() {
+    if (closeBusy) return;
+    setCloseBusy(true);
+    setCloseError(null);
+    try {
+      const ticket = await api<TicketDetail>(`/tickets/${id}/close`, { body: {} });
+      setLoaded({ id, ticket, error: null });
+      setClosing(false);
+    } catch (err) {
+      setCloseError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
+    } finally {
+      setCloseBusy(false);
+    }
+  }
+
   async function download(attachmentId: string) {
     setDownloadError(null);
     try {
@@ -96,7 +117,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
       <section className="space-y-5 rounded-2xl border border-line bg-white p-4 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-4">
-            <Avatar name={t.category.shortName || t.category.name} size="lg" />
+            <SubCategoryIcon category={t.category.shortName || t.category.name} subCategory={t.subCategory?.name} size="lg" />
             <div className="min-w-0">
               <h1 className="text-xl font-bold text-ink sm:text-2xl">{t.title}</h1>
               <p className="mt-1 text-sm text-muted">
@@ -114,26 +135,56 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
         <p className="whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{t.description}</p>
 
         {t.attachments.length > 0 && (
-          <div className="space-y-2 border-t border-line pt-5">
-            <h2 className="text-sm font-semibold text-ink">Attachments</h2>
+          <div className="space-y-3 border-t border-line pt-5">
+            <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Attachments · {t.attachments.length}</h2>
             <ErrorNote message={downloadError} />
-            <ul className="flex flex-wrap gap-2">
-              {t.attachments.map((a) => (
-                <li key={a.id}>
-                  <button
-                    onClick={() => download(a.id)}
-                    className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:border-brand hover:text-brand"
-                  >
-                    <span className="max-w-56 truncate">{a.fileName}</span>
-                    <span className="text-xs text-muted">{formatSize(a.sizeBytes)}</span>
-                    <span className="text-xs font-semibold text-brand">Download</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <AttachmentList items={t.attachments} onDownload={download} size={formatSize} />
           </div>
         )}
       </section>
+
+      {!isFinished(t.status) && (
+        <section className="rounded-2xl border border-line/70 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_4px_16px_-8px_rgba(16,24,40,0.06)] sm:p-5">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <CircleCheck className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-ink">Sorted out already?</p>
+              <p className="text-sm text-muted">Close this ticket if you no longer need help.</p>
+            </div>
+            <button className={btnGhostCls} onClick={() => setClosing(true)}>
+              Close ticket
+            </button>
+          </div>
+        </section>
+      )}
+
+      {closing && (
+        <Modal title="Close this ticket?" onClose={() => (closeBusy ? undefined : setClosing(false))}>
+          <p className="text-sm text-muted">Your team will stop working on it. You can reopen it later if you still need help.</p>
+          <div className="mt-4">
+            <ErrorNote message={closeError} />
+          </div>
+          <div className="mt-5 flex flex-wrap justify-end gap-2.5">
+            <button className={btnGhostCls} onClick={() => setClosing(false)} disabled={closeBusy}>
+              Cancel
+            </button>
+            <button className={btnCls} onClick={closeTicket} disabled={closeBusy}>
+              {closeBusy ? "Closing…" : "Close ticket"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {t.canGiveFeedback && (
+        <FeedbackCard
+          ticketId={t.id}
+          feedback={t.feedback}
+          canReopen={t.canReopen}
+          onSaved={(feedback) => setLoaded((prev) => (prev?.ticket ? { ...prev, ticket: { ...prev.ticket, feedback } } : prev))}
+        />
+      )}
 
       {isFinished(t.status) && !t.canReopen && (
         <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-[15px] text-muted sm:px-5">
@@ -142,10 +193,16 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
       )}
 
       {t.canReopen && (
-        <section className="rounded-2xl border border-line bg-surface p-4 sm:p-5">
+        <section className="rounded-2xl border border-line/70 bg-white p-4 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_4px_16px_-8px_rgba(16,24,40,0.06)] sm:p-5">
           {!reopening ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-[15px] text-ink">Not satisfied with the outcome?</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-soft text-brand">
+                <RotateCcw className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-semibold text-ink">{t.closedByYou ? "Changed your mind?" : "Not satisfied with the outcome?"}</p>
+                <p className="text-sm text-muted">{t.closedByYou ? "Reopen this ticket if you still need help." : "Reopen this ticket and tell us what is still wrong."}</p>
+              </div>
               <button className={btnGhostCls} onClick={() => setReopening(true)}>
                 Reopen ticket
               </button>

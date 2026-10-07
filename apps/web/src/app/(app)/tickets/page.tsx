@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Avatar, ErrorNote, StatusBadge, btnCls, btnGhostCls, timeAgo } from "@/components/ui";
+import { ErrorNote, SubCategoryIcon, StatusBadge, btnCls, btnGhostCls, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { isFinished } from "@/lib/types";
 import type { TicketList } from "@/lib/types";
@@ -96,7 +96,7 @@ export default function MyTicketsPage() {
                 href={`/tickets/${t.id}`}
                 className="flex items-start gap-3 rounded-xl border border-line bg-white p-3.5 transition hover:border-brand hover:shadow-sm sm:items-center sm:gap-4 sm:p-4"
               >
-                <Avatar name={t.category.shortName || t.category.name} />
+                <SubCategoryIcon category={t.category.shortName || t.category.name} subCategory={t.subCategory?.name} />
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="line-clamp-2 font-semibold text-ink sm:truncate">{t.title}</p>
                   {t.subCategory && <p className="truncate text-sm text-ink/70">{t.subCategory.name}</p>}
