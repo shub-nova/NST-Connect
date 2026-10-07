@@ -47,6 +47,8 @@ enum EventType {
   REOPENED
   LINKED
   UNLINKED
+  /// A POC's open ticket was handed to someone else (they went on leave, or were removed). Internal only.
+  REASSIGNED
 }
 
 enum Visibility {
@@ -68,6 +70,22 @@ enum NotificationType {
   RESOLVED
   NUDGE
   NEW_TICKET
+  /// To the assigned POC: the 48h limit is close.
+  TAT_WARNING
+  /// To the POC who let the limit pass without acting.
+  TAT_MISSED
+  /// To admins: a ticket reached the top level and still nobody acted.
+  CRITICAL
+}
+
+/// Why a ticket was escalated.
+enum EscalationReason {
+  /// A POC chose to escalate.
+  MANUAL
+  /// The assigned POC did nothing for 48 hours.
+  TAT_BREACH
+  /// The POC went on leave or was removed and nobody else at their level was on duty.
+  ON_LEAVE
 }
 
 model User {
@@ -78,17 +96,24 @@ model User {
   role            Role
   enrollmentId    String?   @map("enrollment_id")
   emailVerifiedAt DateTime? @map("email_verified_at")
+  /// Set when a staff member is removed from their last role. They can no longer log in.
+  deactivatedAt   DateTime? @map("deactivated_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   pocAssignments POCAssignment[]
-  ticketsRaised  Ticket[]         @relation("TicketStudent")
-  ticketsHeld    Ticket[]         @relation("TicketAssignedPoc")
-  events         TicketEvent[]
+  ticketsRaised  Ticket[]           @relation("TicketStudent")
+  ticketsHeld    Ticket[]           @relation("TicketAssignedPoc")
+  events         TicketEvent[]      @relation("EventActor")
+  eventsReceived TicketEvent[]      @relation("EventAssignee")
   comments       Comment[]
   mentions       CommentMention[]
   attachments    Attachment[]
   notifications  Notification[]
   refreshTokens  RefreshToken[]
+  notesWritten   AdminNote[]        @relation("NoteAuthor")
+  staffChanges   StaffAudit[]       @relation("AuditActor")
+  staffAuditedOn StaffAudit[]       @relation("AuditTarget")
+  noteReceipts   AdminNoteReceipt[]
 
   @@map("user")
 }
@@ -124,13 +149,15 @@ model SubCategory {
 }
 
 model POCAssignment {
-  id                  String  @id @default(uuid()) @db.Uuid
-  userId              String  @map("user_id") @db.Uuid
-  categoryId          String  @map("category_id") @db.Uuid
+  id                  String    @id @default(uuid()) @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  categoryId          String    @map("category_id") @db.Uuid
   level               Int
-  managerAssignmentId String? @map("manager_assignment_id") @db.Uuid
-  active              Boolean @default(true)
-  onLeave             Boolean @default(false) @map("on_leave")
+  managerAssignmentId String?   @map("manager_assignment_id") @db.Uuid
+  active              Boolean   @default(true)
+  onLeave             Boolean   @default(false) @map("on_leave")
+  /// When set, leave ends by itself on this date.
+  onLeaveUntil        DateTime? @map("on_leave_until")
 
   user     User            @relation(fields: [userId], references: [id])
   category Category        @relation(fields: [categoryId], references: [id])
@@ -155,6 +182,8 @@ model Ticket {
   resolvedLevel  Int?         @map("resolved_level")
   assignedPocId  String?      @map("assigned_poc_id") @db.Uuid
   tatDeadline    DateTime?    @map("tat_deadline")
+  /// When the "12 hours left" warning was sent for the current deadline. Reset whenever the deadline resets.
+  tatWarnedAt    DateTime?    @map("tat_warned_at")
   critical       Boolean      @default(false)
   parentTicketId String?      @map("parent_ticket_id") @db.Uuid
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -179,22 +208,29 @@ model Ticket {
 }
 
 model TicketEvent {
-  id         String        @id @default(uuid()) @db.Uuid
-  ticketId   String        @map("ticket_id") @db.Uuid
+  id         String            @id @default(uuid()) @db.Uuid
+  ticketId   String            @map("ticket_id") @db.Uuid
   type       EventType
-  actorId    String?       @map("actor_id") @db.Uuid
-  fromStatus TicketStatus? @map("from_status")
-  toStatus   TicketStatus? @map("to_status")
-  fromLevel  Int?          @map("from_level")
-  toLevel    Int?          @map("to_level")
-  visibility Visibility    @default(PUBLIC)
+  actorId    String?           @map("actor_id") @db.Uuid
+  fromStatus TicketStatus?     @map("from_status")
+  toStatus   TicketStatus?     @map("to_status")
+  fromLevel  Int?              @map("from_level")
+  toLevel    Int?              @map("to_level")
+  visibility Visibility        @default(PUBLIC)
+  /// Who the ticket went to. Set on ASSIGNED, ESCALATED and REOPENED events. This is what
+  /// lets analytics tell which POC a ticket was with, and for how long.
+  assigneeId String?           @map("assignee_id") @db.Uuid
+  /// Set on ESCALATED events.
+  reason     EscalationReason?
   note       String?
-  createdAt  DateTime      @default(now()) @map("created_at")
+  createdAt  DateTime          @default(now()) @map("created_at")
 
-  ticket Ticket @relation(fields: [ticketId], references: [id])
-  actor  User?  @relation(fields: [actorId], references: [id])
+  ticket   Ticket @relation(fields: [ticketId], references: [id])
+  actor    User?  @relation("EventActor", fields: [actorId], references: [id])
+  assignee User?  @relation("EventAssignee", fields: [assigneeId], references: [id])
 
   @@index([ticketId, createdAt])
+  @@index([createdAt])
   @@map("ticket_event")
 }
 
@@ -266,6 +302,58 @@ model Notification {
 
   @@index([userId, readAt])
   @@map("notification")
+}
+
+/// Who changed the team and how: adding, editing, removing a POC, leave, invites. Shown as "Recent changes".
+model StaffAudit {
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String   @map("actor_id") @db.Uuid
+  /// ADDED, UPDATED, REMOVED, LEAVE_ON, LEAVE_OFF, INVITE_SENT
+  action       String
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  categoryId   String?  @map("category_id") @db.Uuid
+  /// A readable summary, e.g. "Added Ravi as L1".
+  summary      String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  actor  User  @relation("AuditActor", fields: [actorId], references: [id])
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id])
+
+  @@index([categoryId, createdAt])
+  @@map("staff_audit")
+}
+
+/// A note the Super Admin writes after looking at the dashboards. Staff only: no student endpoint or
+/// query ever touches these tables.
+model AdminNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String
+  /// Who it was sent to, in words, e.g. "Hostel · L2".
+  audience  String
+  /// What the admin was looking at, e.g. "Auto-escalated, last 30 days".
+  context   String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  author   User               @relation("NoteAuthor", fields: [authorId], references: [id])
+  receipts AdminNoteReceipt[]
+
+  @@index([createdAt])
+  @@map("admin_note")
+}
+
+/// One row per recipient: fixes who the note went to at send time, and records when they saw it.
+model AdminNoteReceipt {
+  noteId String    @map("note_id") @db.Uuid
+  userId String    @map("user_id") @db.Uuid
+  seenAt DateTime? @map("seen_at")
+
+  note AdminNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id])
+
+  @@id([noteId, userId])
+  @@index([userId, seenAt])
+  @@map("admin_note_receipt")
 }
 
 model RefreshToken {

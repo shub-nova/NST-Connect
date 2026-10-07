@@ -11,6 +11,10 @@ import { PrismaClient } from '../src/generated/prisma/client';
  *
  *   STAFF_PASSWORD='your-own-password' npm run db:activate-staff
  *
+ * To change just one account (the others keep their passwords), also set STAFF_EMAIL:
+ *
+ *   STAFF_EMAIL=admin@newtonschool.co STAFF_PASSWORD='your-own-password' npm run db:activate-staff
+ *
  * The password is read from the environment, never stored in the repo.
  */
 loadEnv({ path: path.resolve(__dirname, '../../../.env') });
@@ -22,23 +26,27 @@ async function main() {
     throw new Error("Set STAFF_PASSWORD to a password of at least 10 characters, e.g. STAFF_PASSWORD='...' npm run db:activate-staff");
   }
 
+  const onlyEmail = process.env.STAFF_EMAIL?.trim().toLowerCase();
+
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
   try {
     const hash = await argon2.hash(password, { type: argon2.argon2id });
     const staff = await prisma.user.findMany({
       where: {
+        ...(onlyEmail ? { email: onlyEmail } : {}),
         OR: [{ role: 'SUPER_ADMIN' }, { role: 'POC', pocAssignments: { some: { active: true, category: { active: true } } } }],
       },
       select: { id: true, email: true, role: true, pocAssignments: { where: { active: true, category: { active: true } }, select: { level: true } } },
       orderBy: { email: 'asc' },
     });
+    if (onlyEmail && staff.length === 0) throw new Error(`No staff account found for ${onlyEmail}.`);
     await prisma.user.updateMany({
       where: { id: { in: staff.map((u) => u.id) } },
       data: { passwordHash: hash, emailVerifiedAt: new Date() },
     });
     await prisma.refreshToken.deleteMany({ where: { userId: { in: staff.map((u) => u.id) } } });
 
-    console.log(`Activated ${staff.length} staff accounts with the password you supplied:\n`);
+    console.log(`Activated ${staff.length} staff account${staff.length === 1 ? '' : 's'} with the password you supplied:\n`);
     for (const u of staff) {
       const level = u.role === 'SUPER_ADMIN' ? 'Super Admin' : `L${u.pocAssignments[0]?.level}`;
       console.log(`  ${level.padEnd(12)} ${u.email}`);

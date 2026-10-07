@@ -11,6 +11,11 @@ const prisma = new PrismaClient({ adapter });
 
 const DOMAIN = '@newtonschool.co';
 
+// By default the seed only CREATES what is missing, so it never undoes changes made in Settings
+// (POCs added, removed, moved or on leave). The test suite sets SEED_RESET=true to put the team
+// back to the canonical one-POC-per-level layout.
+const RESET = process.env.SEED_RESET === 'true';
+
 // POC accounts are "invited": the user row exists with no password. The person
 // completes registration with their real @newtonschool.co address, which sets
 // the password. Role and level come from this list, never from the sign-up form.
@@ -49,14 +54,14 @@ async function main() {
     const l3User = await upsertPoc(`${cat.slug}.l3${DOMAIN}`, `${cat.shortName} L3`);
     const l3 = await prisma.pOCAssignment.upsert({
       where: { userId_categoryId: { userId: l3User.id, categoryId: category.id } },
-      update: { active: true, managerAssignmentId: null },
+      update: RESET ? { active: true, managerAssignmentId: null, onLeave: false, onLeaveUntil: null } : {},
       create: { userId: l3User.id, categoryId: category.id, level: 3 },
     });
 
     const l2User = await upsertPoc(`${cat.slug}.l2${DOMAIN}`, `${cat.shortName} L2`);
     const l2 = await prisma.pOCAssignment.upsert({
       where: { userId_categoryId: { userId: l2User.id, categoryId: category.id } },
-      update: { active: true, managerAssignmentId: l3.id },
+      update: RESET ? { active: true, managerAssignmentId: l3.id, onLeave: false, onLeaveUntil: null } : {},
       create: { userId: l2User.id, categoryId: category.id, level: 2, managerAssignmentId: l3.id },
     });
 
@@ -65,15 +70,17 @@ async function main() {
     const l1User = await upsertPoc(`${cat.slug}.l1.1${DOMAIN}`, `${cat.shortName} L1 #1`);
     const l1 = await prisma.pOCAssignment.upsert({
       where: { userId_categoryId: { userId: l1User.id, categoryId: category.id } },
-      update: { active: true, managerAssignmentId: l2.id },
+      update: RESET ? { active: true, managerAssignmentId: l2.id, onLeave: false, onLeaveUntil: null } : {},
       create: { userId: l1User.id, categoryId: category.id, level: 1, managerAssignmentId: l2.id },
     });
-    // Retire any other L1 left over from earlier seeds. They are deactivated, not deleted,
-    // because tickets may still point at them.
-    await prisma.pOCAssignment.updateMany({
-      where: { categoryId: category.id, level: 1, id: { not: l1.id }, active: true },
-      data: { active: false },
-    });
+    // Reset mode only: retire any other L1 left over from earlier seeds (deactivated, not deleted,
+    // because tickets may still point at them).
+    if (RESET) {
+      await prisma.pOCAssignment.updateMany({
+        where: { categoryId: category.id, level: 1, id: { not: l1.id }, active: true },
+        data: { active: false },
+      });
+    }
   }
 
   // Categories from earlier seeds that are no longer in the list are hidden, not deleted,

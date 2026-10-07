@@ -22,11 +22,14 @@ export default async function globalSetup() {
   await client.connect();
   try {
     await client.query(
-      'TRUNCATE ticket_event, attachment, notification, comment_mention, comment, ticket, refresh_token RESTART IDENTITY CASCADE',
+      'TRUNCATE staff_audit, admin_note_receipt, admin_note, ticket_event, attachment, notification, comment_mention, comment, ticket, refresh_token RESTART IDENTITY CASCADE',
     );
     await client.query(`DELETE FROM "user" WHERE role = 'STUDENT'`);
     // Seeded staff go back to "invited, not yet registered" so registration tests are repeatable.
-    await client.query(`UPDATE "user" SET password_hash = NULL, email_verified_at = NULL WHERE role <> 'STUDENT'`);
+    // Staff created by the Settings tests are removed; seeded staff go back to "not yet registered".
+    await client.query(`DELETE FROM poc_assignment WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE 'staff.test.%')`);
+    await client.query(`DELETE FROM "user" WHERE email LIKE 'staff.test.%'`);
+    await client.query(`UPDATE "user" SET password_hash = NULL, email_verified_at = NULL, deactivated_at = NULL WHERE role <> 'STUDENT'`);
   } finally {
     await client.end();
   }
@@ -36,7 +39,7 @@ export default async function globalSetup() {
   // behind, and no test has to rely on another test having cleaned up perfectly.
   execFileSync('npx', ['prisma', 'db', 'seed'], {
     cwd: path.resolve(__dirname, '..'),
-    env: { ...process.env, DATABASE_URL: url },
+    env: { ...process.env, DATABASE_URL: url, SEED_RESET: 'true' },
     stdio: 'ignore',
   });
 }
