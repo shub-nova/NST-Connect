@@ -1,5 +1,6 @@
 "use client";
 
+import { Ellipsis } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AddDialog, EditDialog, LeaveDialog, RemoveDialog } from "@/components/StaffDialogs";
@@ -13,16 +14,6 @@ const STATUS = {
   invited: { label: "Invited", cls: "bg-brand-soft text-brand" },
   on_leave: { label: "On leave", cls: "bg-amber-50 text-amber-600" },
 } as const;
-
-function Dots() {
-  return (
-    <svg viewBox="0 0 20 20" className="h-5 w-5" fill="currentColor" aria-hidden="true">
-      <circle cx="4" cy="10" r="1.6" />
-      <circle cx="10" cy="10" r="1.6" />
-      <circle cx="16" cy="10" r="1.6" />
-    </svg>
-  );
-}
 
 /** The ⋯ menu on each person. */
 function RowMenu({ person, onEdit, onLeave, onBack, onResend, onRemove }: { person: StaffPerson; onEdit: () => void; onLeave: () => void; onBack: () => void; onResend: () => void; onRemove: () => void }) {
@@ -42,7 +33,7 @@ function RowMenu({ person, onEdit, onLeave, onBack, onResend, onRemove }: { pers
   return (
     <div className="relative" ref={ref}>
       <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label={`Actions for ${person.name}`} className="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink">
-        <Dots />
+        <Ellipsis className="h-5 w-5" aria-hidden="true" />
       </button>
       {open && (
         <div role="menu" className="absolute right-0 z-20 mt-1 w-52 rounded-xl border border-line bg-white p-1.5 shadow-lg">

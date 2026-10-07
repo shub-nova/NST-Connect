@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -7,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { AnalyticsAccess } from "@/lib/types";
-import { NOTES_CHANGED } from "./AdminNotes";
+import { NOTES_CHANGED, NotesBell, SentNotesBell } from "./AdminNotes";
 import { LeaveDialog } from "./StaffDialogs";
 import { Avatar } from "./ui";
 
@@ -17,11 +18,7 @@ export function LogoMark({ className = "h-7 w-7" }: { className?: string }) {
 }
 
 function Chevron() {
-  return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4 text-ink" aria-hidden="true">
-      <path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+  return <ChevronDown className="h-4 w-4 text-ink" strokeWidth={2} aria-hidden="true" />;
 }
 
 /** Wraps every logged-in page: redirects visitors to /login and renders the top bar. */
@@ -90,7 +87,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       : user.role === "POC"
         ? [
             { href: "/poc", label: "My queue", short: "Queue", active: pathname === "/poc" || pathname.startsWith("/poc/tickets") },
-            { href: "/poc/analytics", label: "My analytics", short: "Mine", badge: access?.unreadNotes ?? 0, active: pathname === "/poc/analytics" },
+            { href: "/poc/analytics", label: "My analytics", short: "Mine", active: pathname === "/poc/analytics" },
             ...(access?.team ? [{ href: "/poc/analytics/team", label: "Team analytics", short: "Team", active: pathname === "/poc/analytics/team" }] : []),
             ...(access?.overall ? [{ href: "/poc/analytics/overall", label: "Overall analytics", short: "Overall", active: pathname === "/poc/analytics/overall" }] : []),
           ]
@@ -117,16 +114,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   className={`text-sm font-medium transition hover:text-ink sm:text-[15px] ${l.active ? "text-ink" : "text-muted"}`}
                 >
                   {"short" in l ? (<><span className="sm:hidden">{l.short}</span><span className="hidden sm:inline">{l.label}</span></>) : l.label}
-                  {"badge" in l && (l.badge ?? 0) > 0 && (
-                    <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold leading-5 text-white" aria-label={`${l.badge} unread notes`}>
-                      {l.badge}
-                    </span>
-                  )}
                 </Link>
               ))}
             </nav>
           </div>
 
+          <div className="flex items-center gap-1.5">
+          {role === "POC" && <NotesBell unread={access?.unreadNotes ?? 0} />}
+          {role === "SUPER_ADMIN" && <SentNotesBell />}
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen((o) => !o)}
@@ -186,6 +181,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </button>
               </div>
             )}
+          </div>
           </div>
         </div>
       </header>

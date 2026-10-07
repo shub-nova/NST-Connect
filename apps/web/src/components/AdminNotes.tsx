@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Bell, Megaphone as MegaphoneIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { ReceivedNote, SentNote } from "@/lib/types";
 import { btnCls, btnGhostCls, cardCls, ErrorNote, inputCls, PillSelect, timeAgo } from "./ui";
@@ -9,11 +10,7 @@ import { btnCls, btnGhostCls, cardCls, ErrorNote, inputCls, PillSelect, timeAgo 
 export const NOTES_CHANGED = "notes-changed";
 
 function Megaphone({ className = "h-[18px] w-[18px]" }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1zM15 9a4 4 0 010 6M18 6.5a8 8 0 010 11" />
-    </svg>
-  );
+  return <MegaphoneIcon className={className} strokeWidth={2} aria-hidden="true" />;
 }
 
 // ---- Super Admin: write a note about what the dashboard is showing ----------------------------
@@ -36,24 +33,6 @@ export function SendNote({ audience, categoryId, level, pocs, context }: SendPro
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const [sent, setSent] = useState<SentNote[]>([]);
-
-  const loadSent = () =>
-    api<{ notes: SentNote[] }>("/notes/sent")
-      .then((r) => setSent(r.notes.slice(0, 5)))
-      .catch(() => {});
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    api<{ notes: SentNote[] }>("/notes/sent")
-      .then((r) => !cancelled && setSent(r.notes.slice(0, 5)))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
   const chosen = pocs.find((p) => p.id === pocId);
 
   async function send() {
@@ -73,7 +52,6 @@ export function SendNote({ audience, categoryId, level, pocs, context }: SendPro
       });
       setText("");
       setDone(`Sent to ${res.recipients} POC${res.recipients === 1 ? "" : "s"} and emailed.`);
-      loadSent();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not send the note.");
     } finally {
@@ -91,10 +69,7 @@ export function SendNote({ audience, categoryId, level, pocs, context }: SendPro
       {open && (
         <div className={`${cardCls} basis-full space-y-4 p-4 shadow-sm sm:p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-[15px] font-semibold text-ink">Note to {chosen ? chosen.name : audience}</p>
-              <p className="text-xs text-muted">About: {context}. They see it on their dashboard and get an email. Students never see it.</p>
-            </div>
+            <p className="text-[15px] font-semibold text-ink">Note to {chosen ? chosen.name : audience}</p>
             {pocs.length > 1 && (
               <PillSelect label="Send to" value={pocId} onChange={setPocId}>
                 <option value="">Everyone selected</option>
@@ -113,7 +88,7 @@ export function SendNote({ audience, categoryId, level, pocs, context }: SendPro
             rows={3}
             maxLength={2000}
             className={`${inputCls} resize-y`}
-            placeholder="What should they look at or change?"
+            placeholder="Write your note…"
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -128,38 +103,22 @@ export function SendNote({ audience, categoryId, level, pocs, context }: SendPro
             {done && <p className="text-sm font-medium text-emerald-600">{done}</p>}
           </div>
 
-          {sent.length > 0 && (
-            <div className="border-t border-line/70 pt-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted">Recent notes</p>
-              <ul className="mt-2 divide-y divide-line/60">
-                {sent.map((n) => (
-                  <li key={n.id} className="flex items-start justify-between gap-4 py-2.5 text-sm">
-                    <span className="min-w-0">
-                      <span className="line-clamp-2 text-ink">{n.body}</span>
-                      <span className="text-xs text-muted">
-                        {n.audience} · {timeAgo(n.createdAt)}
-                      </span>
-                    </span>
-                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${n.seen === n.recipients ? "bg-emerald-50 text-emerald-600" : "bg-surface text-muted"}`}>
-                      Seen {n.seen}/{n.recipients}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
     </>
   );
 }
 
-// ---- POC: notes from the admin on the dashboard ------------------------------------------------
+// ---- POC: notes from the admin, in a popup from the bell in the top bar -------------------------
 
-export function ReceivedNotes() {
+export function NotesBell({ unread }: { unread: number }) {
+  const [open, setOpen] = useState(false);
   const [notes, setNotes] = useState<ReceivedNote[] | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
+  // Load the notes each time the popup opens, so it is always current.
   useEffect(() => {
+    if (!open) return;
     let cancelled = false;
     api<{ notes: ReceivedNote[] }>("/notes/mine")
       .then((r) => !cancelled && setNotes(r.notes))
@@ -167,57 +126,143 @@ export function ReceivedNotes() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   async function markSeen(id: string) {
     setNotes((all) => all?.map((n) => (n.id === id ? { ...n, seen: true } : n)) ?? null);
     try {
       await api(`/notes/${id}/seen`, { method: "POST", body: {} });
     } catch {
-      /* the next load shows the true state */
+      /* the next open shows the true state */
     }
     window.dispatchEvent(new Event(NOTES_CHANGED));
   }
 
-  if (!notes?.length) return null;
-  const unseen = notes.filter((n) => !n.seen);
-  const earlier = notes.filter((n) => n.seen);
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={unread ? `Notes from the admin, ${unread} unread` : "Notes from the admin"}
+        className="relative rounded-full p-2 text-ink transition hover:bg-surface"
+      >
+        <Bell className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+        {unread > 0 && (
+          <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">{unread}</span>
+        )}
+      </button>
+
+      {open && (
+        <div role="dialog" aria-label="Notes from the admin" className="absolute right-0 z-30 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-white shadow-lg">
+          <div className="border-b border-line/70 px-4 py-3">
+            <p className="text-sm font-semibold text-ink">Notes from the admin</p>
+          </div>
+          <div className="max-h-[26rem] overflow-y-auto">
+            {notes === null && <p className="px-4 py-6 text-center text-sm text-muted">Loading…</p>}
+            {notes?.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted">No notes yet.</p>}
+            <ul className="divide-y divide-line/60">
+              {notes?.map((n) => (
+                <li key={n.id} className={`px-4 py-3.5 ${n.seen ? "" : "bg-brand-soft/40"}`}>
+                  <div className="flex items-start gap-3">
+                    {!n.seen && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="Unread" />}
+                    <div className="min-w-0 flex-1">
+                      <p className="whitespace-pre-wrap text-sm text-ink">{n.body}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {n.context ? `${n.context} · ` : ""}
+                        {timeAgo(n.createdAt)}
+                      </p>
+                      {!n.seen && (
+                        <button onClick={() => markSeen(n.id)} className="mt-2 rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-surface">
+                          Got it
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Super Admin: the notes they have sent, in a popup from the bell ---------------------------
+
+export function SentNotesBell() {
+  const [open, setOpen] = useState(false);
+  const [sent, setSent] = useState<SentNote[] | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Load the list each time the popup opens, so "Seen 2/3" is always current.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api<{ notes: SentNote[] }>("/notes/sent")
+      .then((r) => !cancelled && setSent(r.notes))
+      .catch(() => !cancelled && setSent([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className="space-y-3">
-      {unseen.map((n) => (
-        <div key={n.id} className="flex items-start gap-3.5 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-            <Megaphone />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink">
-              Note from the admin <span className="font-normal text-muted">· {timeAgo(n.createdAt)}</span>
-            </p>
-            {n.context && <p className="text-xs text-muted">About: {n.context}</p>}
-            <p className="mt-1.5 whitespace-pre-wrap text-[15px] text-ink">{n.body}</p>
-          </div>
-          <button onClick={() => markSeen(n.id)} className="shrink-0 rounded-lg bg-white px-3.5 py-2 text-sm font-semibold text-ink shadow-sm ring-1 ring-amber-200 transition hover:bg-amber-100">
-            Got it
-          </button>
-        </div>
-      ))}
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} aria-haspopup="dialog" aria-expanded={open} aria-label="Sent notes" className="rounded-full p-2 text-ink transition hover:bg-surface">
+        <Bell className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
+      </button>
 
-      {earlier.length > 0 && (
-        <details className={`${cardCls} p-4 text-sm`}>
-          <summary className="cursor-pointer font-medium text-ink">Earlier notes ({earlier.length})</summary>
-          <ul className="mt-3 divide-y divide-line/60">
-            {earlier.map((n) => (
-              <li key={n.id} className="py-2.5">
-                <p className="whitespace-pre-wrap text-ink">{n.body}</p>
-                <p className="text-xs text-muted">
-                  {n.context ? `${n.context} · ` : ""}
-                  {timeAgo(n.createdAt)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        </details>
+      {open && (
+        <div role="dialog" aria-label="Sent notes" className="absolute right-0 z-30 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-line bg-white shadow-lg">
+          <div className="border-b border-line/70 px-4 py-3">
+            <p className="text-sm font-semibold text-ink">Sent notes</p>
+          </div>
+          <div className="max-h-[26rem] overflow-y-auto">
+            {sent === null && <p className="px-4 py-6 text-center text-sm text-muted">Loading…</p>}
+            {sent?.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted">You haven’t sent any notes yet.</p>}
+            <ul className="divide-y divide-line/60">
+              {sent?.map((n) => (
+                <li key={n.id} className="flex items-start justify-between gap-3 px-4 py-3.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm text-ink">{n.body}</p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {n.audience} · {timeAgo(n.createdAt)}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${n.seen === n.recipients ? "bg-emerald-50 text-emerald-600" : "bg-surface text-muted"}`}>
+                    Seen {n.seen}/{n.recipients}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
     </div>
   );

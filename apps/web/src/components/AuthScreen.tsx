@@ -1,5 +1,6 @@
 "use client";
 
+import { Eye, EyeOff, GitBranch, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -74,11 +75,7 @@ function PasswordInput({
         aria-label={shown ? "Hide password" : "Show password"}
         className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-ink hover:text-brand"
       >
-        <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-          <circle cx="12" cy="12" r="3" />
-          {!shown && <path d="M3 3l18 18" />}
-        </svg>
+        {shown ? <Eye className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" /> : <EyeOff className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" />}
       </button>
     </div>
   );
@@ -211,7 +208,6 @@ function FeatureTile({ icon, children }: { icon: React.ReactNode; children: Reac
   );
 }
 
-const iconProps = { viewBox: "0 0 24 24", className: "h-8 w-8", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
 
 export default function AuthScreen({ mode }: { mode: Mode }) {
   if (mode === "login") {
@@ -248,21 +244,14 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
           <div className="flex gap-3">
             <FeatureTile
               icon={
-                <svg {...iconProps}>
-                  <path d="M4 20l4-1 11-11a2.8 2.8 0 00-4-4L4 15l-1 4 1 1zM14 6l4 4" />
-                </svg>
+                <Pencil className="h-8 w-8" strokeWidth={1.8} aria-hidden="true" />
               }
             >
               Raise a ticket in seconds
             </FeatureTile>
             <FeatureTile
               icon={
-                <svg {...iconProps}>
-                  <circle cx="6" cy="5" r="2" />
-                  <circle cx="6" cy="19" r="2" />
-                  <circle cx="18" cy="9" r="2" />
-                  <path d="M6 7v10M6 12c0-3 12-1 12-1" />
-                </svg>
+                <GitBranch className="h-8 w-8" strokeWidth={1.8} aria-hidden="true" />
               }
             >
               Track every update

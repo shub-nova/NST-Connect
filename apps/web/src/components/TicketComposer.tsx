@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown, Paperclip } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
@@ -183,18 +184,7 @@ export default function TicketComposer({
               </option>
             ))}
           </select>
-          <svg
-            viewBox="0 0 20 20"
-            className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M5 7.5l5 5 5-5" />
-          </svg>
+          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" strokeWidth={2} aria-hidden="true" />
         </div>
         <FieldError show={showErrors} message={problems.issue} />
         </div>
@@ -285,9 +275,7 @@ export default function TicketComposer({
             disabled={busy || files.length >= MAX_FILES}
             className="inline-flex items-center gap-2 rounded-lg py-2.5 pr-2 text-sm font-medium text-muted transition hover:text-brand disabled:opacity-50"
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l8.6-8.6a3.7 3.7 0 015.2 5.2l-8.6 8.6a1.8 1.8 0 01-2.6-2.6l7.9-7.9" />
-            </svg>
+            <Paperclip className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
             Attach
           </button>
         </div>
