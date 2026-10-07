@@ -4,7 +4,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import type { AnalyticsAccess } from "@/lib/types";
+import { NOTES_CHANGED } from "./AdminNotes";
+import { LeaveDialog } from "./StaffDialogs";
 import { Avatar } from "./ui";
 
 /** The Newton School logo mark. */
@@ -31,15 +35,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const role = user?.role;
   const isStudentArea = pathname === "/new" || pathname.startsWith("/tickets");
   const isPocArea = pathname.startsWith("/poc");
+  const isAdminArea = pathname.startsWith("/admin");
+  const [access, setAccess] = useState<AnalyticsAccess | null>(null);
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
   useEffect(() => {
     if (status === "anon") router.replace("/login");
     // Each role only sees its own pages; anything else goes to that role's home.
     if (status === "authed" && role) {
       if (role !== "STUDENT" && isStudentArea) router.replace(role === "POC" ? "/poc" : "/");
-      if (role === "STUDENT" && isPocArea) router.replace("/new");
+      if (role === "STUDENT" && (isPocArea || isAdminArea)) router.replace("/new");
+      if (role === "POC" && isAdminArea) router.replace("/poc");
+      if (role === "SUPER_ADMIN" && isPocArea) router.replace("/admin");
     }
-  }, [status, role, isStudentArea, isPocArea, router]);
+  }, [status, role, isStudentArea, isPocArea, isAdminArea, router]);
+
+  // Which analytics pages this person may open (Team and Overall are for L2 and L3 only).
+  useEffect(() => {
+    if (status !== "authed" || (role !== "POC" && role !== "SUPER_ADMIN")) return;
+    let cancelled = false;
+    const load = () =>
+      api<AnalyticsAccess>("/analytics/access")
+        .then((a) => !cancelled && setAccess(a))
+        .catch(() => {});
+    load();
+    // Reading a note changes the unread count in the menu.
+    window.addEventListener(NOTES_CHANGED, load);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(NOTES_CHANGED, load);
+    };
+  }, [status, role]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -54,14 +80,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return <p className="p-10 text-sm text-muted">Loading…</p>;
   }
 
-  const home = user.role === "POC" ? "/poc" : "/new";
+  const home = user.role === "POC" ? "/poc" : user.role === "SUPER_ADMIN" ? "/admin" : "/new";
   const links =
     user.role === "STUDENT"
       ? [
           { href: "/new", label: "New ticket", active: pathname === "/new" },
           { href: "/tickets", label: "My tickets", active: pathname.startsWith("/tickets") },
         ]
-      : [];
+      : user.role === "POC"
+        ? [
+            { href: "/poc", label: "My queue", short: "Queue", active: pathname === "/poc" || pathname.startsWith("/poc/tickets") },
+            { href: "/poc/analytics", label: "My analytics", short: "Mine", badge: access?.unreadNotes ?? 0, active: pathname === "/poc/analytics" },
+            ...(access?.team ? [{ href: "/poc/analytics/team", label: "Team analytics", short: "Team", active: pathname === "/poc/analytics/team" }] : []),
+            ...(access?.overall ? [{ href: "/poc/analytics/overall", label: "Overall analytics", short: "Overall", active: pathname === "/poc/analytics/overall" }] : []),
+          ]
+        : [{ href: "/admin", label: "All teams", short: "Teams", active: pathname === "/admin" }];
 
   return (
     <div className="min-h-screen bg-white">
@@ -75,7 +108,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <LogoMark />
               <span className="hidden sm:inline">NST Connect</span>
             </Link>
-            <nav className="flex items-center gap-4 sm:gap-7" aria-label="Main">
+            <nav className="flex items-center gap-4 overflow-x-auto whitespace-nowrap sm:gap-7" aria-label="Main">
               {links.map((l) => (
                 <Link
                   key={l.href}
@@ -83,7 +116,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   aria-current={l.active ? "page" : undefined}
                   className={`text-sm font-medium transition hover:text-ink sm:text-[15px] ${l.active ? "text-ink" : "text-muted"}`}
                 >
-                  {l.label}
+                  {"short" in l ? (<><span className="sm:hidden">{l.short}</span><span className="hidden sm:inline">{l.label}</span></>) : l.label}
+                  {"badge" in l && (l.badge ?? 0) > 0 && (
+                    <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold leading-5 text-white" aria-label={`${l.badge} unread notes`}>
+                      {l.badge}
+                    </span>
+                  )}
                 </Link>
               ))}
             </nav>
@@ -105,7 +143,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <div className="px-3 py-2">
                   <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
                   <p className="truncate text-xs text-muted">{user.email}</p>
+                  {access?.onLeave && (
+                    <p className="mt-1.5 inline-block rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-600">
+                      On leave{access.onLeaveUntil ? ` · back ${new Date(access.onLeaveUntil).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
+                    </p>
+                  )}
                 </div>
+                {access?.manage && (
+                  <Link
+                    href="/settings"
+                    role="menuitem"
+                    onClick={() => setMenuOpen(false)}
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface"
+                  >
+                    Settings
+                  </Link>
+                )}
+                {role === "POC" && (
+                  <button
+                    role="menuitem"
+                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface"
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      if (!access?.onLeave) return setLeaveOpen(true);
+                      await api("/staff/me/leave", { method: "PUT", body: { onLeave: false } }).catch(() => {});
+                      window.dispatchEvent(new Event(NOTES_CHANGED)); // refreshes the menu state
+                    }}
+                  >
+                    {access?.onLeave ? "I’m back from leave" : "Go on leave"}
+                  </button>
+                )}
                 <button
                   role="menuitem"
                   className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface"
@@ -123,6 +190,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-5 sm:py-8">{children}</main>
+
+      {leaveOpen && (
+        <LeaveDialog
+          onClose={() => setLeaveOpen(false)}
+          onConfirm={async (until) => {
+            await api("/staff/me/leave", { method: "PUT", body: { onLeave: true, until } });
+            setLeaveOpen(false);
+            window.dispatchEvent(new Event(NOTES_CHANGED)); // refreshes the menu state
+          }}
+        />
+      )}
     </div>
   );
 }
