@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { Avatar, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
+import { Avatar, BackLink, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatSize } from "@/lib/files";
 import { isFinished } from "@/lib/types";
@@ -91,9 +91,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
   const t = loaded.ticket;
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <Link href="/tickets" className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline">
-        ← Back to my tickets
-      </Link>
+      <BackLink href="/tickets">Back to my tickets</BackLink>
 
       <section className="space-y-5 rounded-2xl border border-line bg-white p-4 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">

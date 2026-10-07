@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { Avatar, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
+import { Avatar, BackLink, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
 import { formatSize } from "@/lib/files";
 import type { CloseOutcome, PocTicketDetail } from "@/lib/types";
@@ -122,9 +122,13 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <Link href="/poc" className="inline-flex items-center gap-1 text-sm font-medium text-brand hover:underline">
-        ← Back to queue
-      </Link>
+      <BackLink href="/poc">Back to queue</BackLink>
+
+      {ticket.critical && !resolved && (
+        <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[15px] text-red-800 sm:px-5">
+          <strong>Critical.</strong> Nobody has acted on this ticket for 48 hours at any level. Please reply or finish it now.
+        </p>
+      )}
 
       <section className="space-y-5 rounded-2xl border border-line bg-white p-4 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
