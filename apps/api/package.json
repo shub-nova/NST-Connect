@@ -17,13 +17,18 @@
     "test:watch": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --watch",
     "test:cov": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage",
     "test:debug": "node --inspect-brk --experimental-vm-modules -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "NODE_ENV=test DATABASE_URL=postgresql://nstconnect:nstconnect_dev@localhost:5432/nstconnect_test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand",
+    "test:e2e": "NODE_ENV=test STUDENT_EMAIL_DOMAIN=adypu.edu.in POC_EMAIL_DOMAIN=newtonschool.co DATABASE_URL=postgresql://nstconnect:nstconnect_dev@localhost:5432/nstconnect_test node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev && prisma generate",
+    "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:seed:production": "SEED_MODE=production prisma db seed",
     "postinstall": "prisma generate",
     "db:activate-staff": "tsx prisma/activate-staff.ts",
-    "db:demo-data": "tsx prisma/demo-data.ts"
+    "db:demo-data": "tsx prisma/demo-data.ts",
+    "db:studio": "prisma studio --browser none --port 5555",
+    "mail:test": "tsx scripts/send-test-mail.ts",
+    "storage:setup": "tsx scripts/setup-storage.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",
@@ -36,6 +41,7 @@
     "@nestjs/throttler": "^6.7.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@upstash/redis": "^1.39.0",
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
     "helmet": "^8.3.0",

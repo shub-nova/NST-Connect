@@ -7,7 +7,7 @@ import { PrismaClient } from '../generated/prisma/client';
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor(config: ConfigService) {
     super({
-      adapter: new PrismaPg({ connectionString: config.getOrThrow<string>('DATABASE_URL') }),
+      adapter: new PrismaPg({ connectionString: config.getOrThrow<string>('DATABASE_URL'), max: config.get<number>('DB_POOL_MAX') ?? 10 }),
     });
   }
 
