@@ -59,4 +59,13 @@ describe('production safety check', () => {
     expect(() => validateEnv(testing)).toThrow(/more than one domain/);
     expect(() => validateEnv({ ...testing, ALLOW_TEST_STUDENT_DOMAINS: 'true' })).not.toThrow();
   });
+
+  it('allows extra staff domains while testing, and a shared test domain only with the switch on', () => {
+    const base = { ...good, STUDENT_EMAIL_DOMAIN: 'adypu.edu.in,gmail.com', ALLOW_TEST_STUDENT_DOMAINS: 'true' };
+    expect(() => validateEnv({ ...base, POC_EMAIL_DOMAIN: 'newtonschool.co,outlook.com' })).not.toThrow();
+    expect(() => validateEnv({ ...base, POC_EMAIL_DOMAIN: 'newtonschool.co,gmail.com' })).not.toThrow();
+    const shared = { ...good, STUDENT_EMAIL_DOMAIN: 'adypu.edu.in,gmail.com', POC_EMAIL_DOMAIN: 'newtonschool.co,gmail.com' };
+    expect(() => validateEnv(shared)).toThrow(/more than one domain/);
+    expect(() => validateEnv({ ...good, POC_EMAIL_DOMAIN: 'newtonschool.co,outlook.com' })).toThrow(/POC_EMAIL_DOMAIN lists more than one/);
+  });
 });

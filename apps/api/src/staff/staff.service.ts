@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeDomains, parseDomains } from '../auth/email-domains';
 import { MailService } from '../mail/mail.service';
 import { Prisma, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -140,8 +141,8 @@ export class StaffService {
 
   async add(actor: Actor, input: { name: string; email: string; categoryId: string; level: number; managerAssignmentId?: string }) {
     const email = input.email.trim().toLowerCase();
-    const domain = this.config.getOrThrow<string>('POC_EMAIL_DOMAIN');
-    if (!email.endsWith(`@${domain}`)) throw new BadRequestException(`Staff must use an @${domain} email address.`);
+    const domains = parseDomains(this.config.getOrThrow<string>('POC_EMAIL_DOMAIN'));
+    if (!domains.some((d) => email.endsWith(`@${d}`))) throw new BadRequestException(`Staff must use an ${describeDomains(domains)} email address.`);
 
     const { mine, below, isAdmin } = await this.reach(actor);
     const pool = [...mine, ...below];

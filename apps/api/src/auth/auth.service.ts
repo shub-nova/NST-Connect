@@ -13,7 +13,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Role, User } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { classifyEmail, describeDomains, parseDomains, type EmailKind } from './email-domains';
+import { classifyEmail, describeDomains, overlappingDomains, parseDomains, type EmailKind } from './email-domains';
 
 
 export interface PublicUser {
@@ -54,6 +54,17 @@ export class AuthService implements OnModuleInit {
     if (domains.length > 1) {
       this.logger.warn(`Student sign-up also accepts ${describeDomains(domains.slice(1))}. That is for testing only: remove it before going live.`);
     }
+    const staff = this.staffDomains();
+    const shared = overlappingDomains(domains, staff);
+    if (shared.length) {
+      this.logger.warn(`${describeDomains(shared)} is a shared test domain: name@ signs up as a student, name+staff@ as staff. Testing only: remove it before going live.`);
+    } else if (staff.length > 1) {
+      this.logger.warn(`Staff sign-up also accepts ${describeDomains(staff.slice(1))}. That is for testing only: remove it before going live.`);
+    }
+  }
+
+  private staffDomains(): string[] {
+    return parseDomains(this.config.getOrThrow<string>('POC_EMAIL_DOMAIN'));
   }
 
   private studentDomains(): string[] {
@@ -61,7 +72,7 @@ export class AuthService implements OnModuleInit {
   }
 
   classifyEmail(email: string): EmailKind | null {
-    return classifyEmail(email, this.studentDomains(), this.config.getOrThrow<string>('POC_EMAIL_DOMAIN'));
+    return classifyEmail(email, this.studentDomains(), this.staffDomains());
   }
 
   async register(rawEmail: string, name: string, password: string): Promise<void> {
@@ -69,7 +80,7 @@ export class AuthService implements OnModuleInit {
     const kind = this.classifyEmail(email);
     if (!kind) {
       throw new BadRequestException(
-        `Registration is limited to ${describeDomains(this.studentDomains())} (students) and @${this.config.get('POC_EMAIL_DOMAIN')} (staff) email addresses.`,
+        `Registration is limited to ${describeDomains(this.studentDomains())} (students) and ${describeDomains(this.staffDomains())} (staff) email addresses.`,
       );
     }
 

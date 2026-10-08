@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { overlappingDomains, parseDomains } from '../auth/email-domains';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -13,7 +14,7 @@ const schema = z.object({
 
   STUDENT_EMAIL_DOMAIN: z.string().default('adypu.edu.in'),
   POC_EMAIL_DOMAIN: z.string().default('newtonschool.co'),
-  /** Lets a production deployment keep extra student domains (for example gmail.com) while it is still being tested. Remove before going live. */
+  /** Lets a production deployment keep extra student and staff domains (for example gmail.com) while it is still being tested. Remove before going live. */
   ALLOW_TEST_STUDENT_DOMAINS: z.stringbool().default(false),
 
   SMTP_HOST: z.string().default('localhost'),
@@ -70,6 +71,11 @@ export function productionProblems(env: Env, platform: { onVercel?: boolean } = 
   if (!env.ALLOW_TEST_STUDENT_DOMAINS && env.STUDENT_EMAIL_DOMAIN.split(',').filter((d) => d.trim()).length > 1) {
     problems.push('STUDENT_EMAIL_DOMAIN lists more than one domain. Extra domains are for testing only: remove them, or set ALLOW_TEST_STUDENT_DOMAINS=true while you are still testing.');
   }
+  if (!env.ALLOW_TEST_STUDENT_DOMAINS && env.POC_EMAIL_DOMAIN.split(',').filter((d) => d.trim()).length > 1) {
+    problems.push('POC_EMAIL_DOMAIN lists more than one domain. Extra domains are for testing only: remove them, or set ALLOW_TEST_STUDENT_DOMAINS=true while you are still testing.');
+  }
+  const overlap = overlappingDomains(parseDomains(env.STUDENT_EMAIL_DOMAIN), parseDomains(env.POC_EMAIL_DOMAIN));
+  if (overlap.length && !env.ALLOW_TEST_STUDENT_DOMAINS) problems.push(`${overlap.join(', ')} is in both STUDENT_EMAIL_DOMAIN and POC_EMAIL_DOMAIN. That is for testing only (set ALLOW_TEST_STUDENT_DOMAINS=true): staff then sign up as name+staff@${overlap[0]}. Give staff a different domain for real use.`);
   if (platform.onVercel && (!env.JOB_SECRET || env.ESCALATION_JOB_ENABLED)) {
     problems.push('On Vercel there is no always-on process: set ESCALATION_JOB_ENABLED=false and JOB_SECRET, and call /internal/escalation/run on a schedule.');
   }
