@@ -148,6 +148,7 @@ Open **Settings** from the account menu (L2, L3 and the Super Admin; L1 does not
 | L2 | The L1 below them |
 
 - **Add:** name, `@newtonschool.co` email, level (and who they report to if there is a choice). They get an invite email and create their account with that address. Removed people can be added back.
+- **Signing up on their own:** anyone with an `@newtonschool.co` address can also register at `/register` and verify their email. That only creates an account with no category: they see an empty queue and a note saying they are not assigned yet, and nothing else, until an admin or team lead adds them here (with the same email, no new invite needed). Signing up never gives access to tickets or management.
 - **Edit:** name and who they report to. Email and level are fixed: remove and re-add to change them.
 - **Remove:** never a hard delete. Open tickets are handed to colleagues at the same level (or escalated if nobody else is available), the person can no longer log in, and their past work stays in the analytics. You cannot remove the last POC at a level, or someone who still has a team under them.
 - **Recent changes** lists who did what. Every rule is enforced on the server, not just hidden in the screen.
@@ -167,6 +168,34 @@ A student can close any open ticket from its page (**Close ticket**, with a conf
 - It is **not a POC outcome**: analytics never count it as Solved or Closed, it is not part of finish times, and the student is not asked for feedback on it.
 - The student can change their mind: **Reopen ticket** sends it back to the level it was at. A ticket they closed is never "final", even at the top level.
 - API: `POST /tickets/:id/close` (student).
+
+## Deploying
+
+See **[DEPLOY.md](DEPLOY.md)** for the step-by-step guide to hosting both apps free on Vercel (with Neon, Cloudflare R2, Upstash and GitHub Actions).
+
+## Email (sign-up verification and notifications)
+
+By default every email goes to **Mailpit** (http://localhost:8025), a local catcher: nothing reaches a real inbox, which is handy for development. To send **real email** (so a student gets the verification link in their own inbox), fill in an SMTP provider in `.env`:
+
+```
+SMTP_HOST=smtp-relay.brevo.com
+SMTP_PORT=587
+SMTP_USER=<your SMTP login>
+SMTP_PASS=<your SMTP key>
+MAIL_FROM="NST Connect <a sender address you verified with the provider>"
+```
+
+Check it works with `npm run mail:test -w apps/api -- you@example.com`. When the API starts it logs `Mail ready: <host>` (or a warning if the login is rejected). Port 587 uses STARTTLS and port 465 uses implicit TLS automatically. The automated tests always use Mailpit, whatever `.env` says, so they can never send real email. Verification links point to `WEB_URL`, so set it to the public address once the app is deployed.
+
+### Testing student sign-up with a real inbox
+
+Student sign-up only accepts the college domain. To test the real verification email with an address you own (for example Gmail), add it to the list in `.env`, restart the API, and sign up with it:
+
+```
+STUDENT_EMAIL_DOMAIN=adypu.edu.in,gmail.com
+```
+
+The API logs a warning at every start while an extra domain is allowed. Remove it when you are done. The automated tests always use the real college domain, whatever `.env` says.
 
 ## Student feedback
 
