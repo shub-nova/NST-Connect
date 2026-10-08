@@ -87,7 +87,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       : user.role === "POC"
         ? [
             { href: "/poc", label: "My queue", short: "Queue", active: pathname === "/poc" || pathname.startsWith("/poc/tickets") },
-            { href: "/poc/analytics", label: "My analytics", short: "Mine", active: pathname === "/poc/analytics" },
+            ...(access?.me === false ? [] : [{ href: "/poc/analytics", label: "My analytics", short: "Mine", active: pathname === "/poc/analytics" }]),
             ...(access?.team ? [{ href: "/poc/analytics/team", label: "Team analytics", short: "Team", active: pathname === "/poc/analytics/team" }] : []),
             ...(access?.overall ? [{ href: "/poc/analytics/overall", label: "Overall analytics", short: "Overall", active: pathname === "/poc/analytics/overall" }] : []),
           ]

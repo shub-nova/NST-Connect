@@ -45,6 +45,7 @@ interface Loaded {
   total: number;
   counts: { open: number; done: number };
   nextCursor: string | null;
+  assigned: boolean;
   error: string | null;
 }
 
@@ -78,7 +79,7 @@ export default function PocQueuePage() {
       .then((res) => !cancelled && setLoaded({ key, ...res, error: null }))
       .catch((err) => {
         if (!cancelled) {
-          setLoaded({ key, tickets: [], total: 0, counts: { open: 0, done: 0 }, nextCursor: null, error: err instanceof ApiError ? err.message : "Could not load your queue." });
+          setLoaded({ key, tickets: [], total: 0, counts: { open: 0, done: 0 }, nextCursor: null, assigned: true, error: err instanceof ApiError ? err.message : "Could not load your queue." });
         }
       });
     return () => {
@@ -219,7 +220,13 @@ export default function PocQueuePage() {
       {toast && <p role="status" className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{toast}</p>}
       <ErrorNote message={ready?.error ?? moreError} />
       {!ready && <p className="text-sm text-muted">Loading…</p>}
-      {ready && total === 0 && !ready.error && (
+      {ready && !ready.assigned && !ready.error && (
+        <div className="rounded-2xl border border-line bg-white p-8 text-center shadow-[0_1px_2px_rgba(16,24,40,0.04)] sm:p-10">
+          <p className="text-[17px] font-semibold text-ink">You are not assigned to a category yet</p>
+          <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">Your account is ready. Ask your team lead or the admin to add you from Settings, and your tickets will appear here.</p>
+        </div>
+      )}
+      {ready && ready.assigned && total === 0 && !ready.error && (
         <div className="rounded-2xl border border-dashed border-line bg-surface p-10 text-center text-sm text-muted">
           {view === "open" ? "Nothing waiting. You're all caught up." : "Nothing finished yet."}
         </div>

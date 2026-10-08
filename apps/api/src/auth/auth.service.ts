@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -12,8 +13,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Role, User } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { classifyEmail, describeDomains, parseDomains, type EmailKind } from './email-domains';
 
-type EmailKind = 'STUDENT' | 'STAFF';
 
 export interface PublicUser {
   id: string;
@@ -31,13 +32,11 @@ export interface AuthResult {
 /** How long after rotation the old refresh token is still accepted (covers racing requests). */
 const REFRESH_REUSE_GRACE_MS = 10_000;
 
-const STUDENT_LOCAL_PART = /^[a-z0-9][a-z0-9._-]{1,62}$/;
-
 const toPublic = (u: User): PublicUser => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
   // Used to spend the same time on unknown emails as on real ones (timing safety).
   private dummyHash?: Promise<string>;
@@ -49,15 +48,20 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  /** Which kind of address is this? null means the domain is not allowed. */
-  classifyEmail(email: string): EmailKind | null {
-    const [local, domain, ...rest] = email.split('@');
-    if (!local || !domain || rest.length) return null;
-    if (domain === this.config.getOrThrow<string>('STUDENT_EMAIL_DOMAIN')) {
-      return STUDENT_LOCAL_PART.test(local) ? 'STUDENT' : null;
+  /** Makes a test-only setting hard to forget: extra student domains are logged on every start. */
+  onModuleInit() {
+    const domains = this.studentDomains();
+    if (domains.length > 1) {
+      this.logger.warn(`Student sign-up also accepts ${describeDomains(domains.slice(1))}. That is for testing only: remove it before going live.`);
     }
-    if (domain === this.config.getOrThrow<string>('POC_EMAIL_DOMAIN')) return 'STAFF';
-    return null;
+  }
+
+  private studentDomains(): string[] {
+    return parseDomains(this.config.getOrThrow<string>('STUDENT_EMAIL_DOMAIN'));
+  }
+
+  classifyEmail(email: string): EmailKind | null {
+    return classifyEmail(email, this.studentDomains(), this.config.getOrThrow<string>('POC_EMAIL_DOMAIN'));
   }
 
   async register(rawEmail: string, name: string, password: string): Promise<void> {
@@ -65,7 +69,7 @@ export class AuthService {
     const kind = this.classifyEmail(email);
     if (!kind) {
       throw new BadRequestException(
-        `Registration is limited to @${this.config.get('STUDENT_EMAIL_DOMAIN')} (students) and @${this.config.get('POC_EMAIL_DOMAIN')} (staff) email addresses.`,
+        `Registration is limited to ${describeDomains(this.studentDomains())} (students) and @${this.config.get('POC_EMAIL_DOMAIN')} (staff) email addresses.`,
       );
     }
 
@@ -88,12 +92,13 @@ export class AuthService {
         target = await this.prisma.user.update({ where: { id: existing.id }, data: { name, passwordHash } });
       }
     } else {
-      // Staff roles come only from the admin-managed list (seeded users). Anyone
-      // else on the staff domain cannot self-register into a role.
+      // Anyone on the staff domain can sign up; the verification link proves the address is theirs. That only
+      // creates a POC account with NO category: it sees nothing until an admin or team lead adds them from
+      // Settings. Access comes from an assignment, never from signing up. Admins are never self-registered.
       if (existing && !existing.emailVerifiedAt) {
         target = await this.prisma.user.update({ where: { id: existing.id }, data: { passwordHash } });
       } else if (!existing) {
-        this.logger.warn(`Staff registration ignored for uninvited address ${email}`);
+        target = await this.prisma.user.create({ data: { email, name, passwordHash, role: Role.POC } });
       }
     }
 

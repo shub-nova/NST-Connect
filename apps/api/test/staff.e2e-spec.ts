@@ -237,6 +237,19 @@ describe('Settings: managing POCs, and leave (e2e)', () => {
     expect((await prisma().user.findUniqueOrThrow({ where: { email: emailB } })).deactivatedAt).toBeNull();
   });
 
+  it('gives someone who signed up on their own access once a manager adds them', async () => {
+    const email = `staff.test.walkin${stamp}@newtonschool.co`;
+    const token = await registerAndLogin(app, email, 'Walk In');
+    expect((await get('/poc/queue', token).expect(200)).body).toMatchObject({ assigned: false, tickets: [] });
+
+    const added = (await post('/staff', admin, { name: 'Walk In', email, categoryId, level: 1 }).expect(201)).body;
+    expect(added).toMatchObject({ level: 1, status: 'active' }); // already registered, so no invite is needed
+    expect((await get('/poc/queue', token).expect(200)).body).toMatchObject({ assigned: true });
+    expect((await get('/analytics/me', token).expect(200)).body.view).toBe('me');
+    await post(`/staff/${added.id}/remove`, admin).expect(200); // tidy up
+    expect((await get('/poc/queue', token).expect(200)).body).toMatchObject({ assigned: false });
+  });
+
   // ---- the paper trail -------------------------------------------------------------------
 
   it('records every change and shows it only to people responsible for that category', async () => {

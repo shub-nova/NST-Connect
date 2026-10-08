@@ -102,6 +102,8 @@ export interface PocQueuePage {
   /** Tickets in each tab, for the tab labels. */
   counts: { open: number; done: number };
   nextCursor: string | null;
+  /** False for someone who signed up but has not been added to a category yet. */
+  assigned: boolean;
 }
 
 export interface PocQueueTicket {

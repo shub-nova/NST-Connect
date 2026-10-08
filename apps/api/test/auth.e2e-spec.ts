@@ -111,12 +111,23 @@ describe('Identity (e2e)', () => {
     expect(user.passwordHash).not.toContain(PASSWORD);
   });
 
-  it('staff addresses cannot self-register into a role unless they were invited', async () => {
+  it('a staff address can sign up on its own, but sees nothing until someone adds it to a category', async () => {
     const server = app.getHttpServer();
-    const email = `uninvited${Date.now().toString(36)}@newtonschool.co`;
-    await request(server).post('/auth/register').send({ email, name: 'Not Invited', password: PASSWORD }).expect(202);
-    expect(await prismaOf(app).user.findUnique({ where: { email } })).toBeNull();
-    await request(server).post('/auth/login').send({ email, password: PASSWORD }).expect(401);
+    const email = `staff.test.walkin${Date.now().toString(36)}@newtonschool.co`;
+    await request(server).post('/auth/register').send({ email, name: 'Walk In', password: PASSWORD }).expect(202);
+    const created = await prismaOf(app).user.findUniqueOrThrow({ where: { email } });
+    expect(created).toMatchObject({ role: 'POC', emailVerifiedAt: null });
+    await request(server).post('/auth/login').send({ email, password: PASSWORD }).expect(403); // must verify the email first
+
+    const token = await registerAndLogin(app, email, 'Walk In');
+    const auth = { Authorization: `Bearer ${token}` };
+    // Signed up and verified, but with no category: no tickets and no management powers at all.
+    const queue = (await request(server).get('/poc/queue').set(auth).expect(200)).body;
+    expect(queue).toMatchObject({ tickets: [], total: 0, assigned: false });
+    await request(server).get('/analytics/me').set(auth).expect(403);
+    await request(server).get('/staff/team').set(auth).expect(403);
+    await request(server).get('/analytics/admin').set(auth).expect(403);
+    expect((await request(server).get('/notes/mine').set(auth).expect(200)).body.notes).toEqual([]);
   });
 
   it('invited POC can complete registration and reach POC-only endpoints', async () => {

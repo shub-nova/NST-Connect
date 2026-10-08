@@ -71,7 +71,8 @@ export class PocService {
   async queue(pocId: string, q: { view: QueueView; sort?: QueueSort; limit?: number; cursor?: string }) {
     const pairs = await this.pairs(pocId);
     const counts = await this.counts(pairs);
-    if (!pairs.length) return { tickets: [], total: 0, counts, nextCursor: null as string | null };
+    // `assigned` is false for someone who signed up but has not been added to a category yet.
+    if (!pairs.length) return { tickets: [], total: 0, counts, nextCursor: null as string | null, assigned: false };
 
     const view = q.view;
     const limit = q.limit ?? DEFAULT_PAGE_SIZE;
@@ -110,7 +111,7 @@ export class PocService {
     });
     const byId = new Map(found.map((t) => [t.id, t]));
     const tickets = page.map((r) => byId.get(r.id)).filter((t): t is NonNullable<typeof t> => !!t);
-    return { tickets, total: counts[view], counts, nextCursor };
+    return { tickets, total: counts[view], counts, nextCursor, assigned: true };
   }
 
   /** How many tickets are open and done for this POC (shown on the tabs). */
