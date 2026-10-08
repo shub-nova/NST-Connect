@@ -146,6 +146,9 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
 
 ## If something fails
 
+- **`ERR_REQUIRE_ESM` ... `@nestjs/core`:** Vercel will not `require()` an ES module, and NestJS 12 is one. The build already folds
+  `@nestjs/*` into `dist/serverless.bundle.js` (`apps/api/scripts/bundle-serverless.mjs`) and the function loads that file.
+  If you see this error, that step did not run: check the build log for "serverless.bundle.js".
 - **"Cannot find module argon2" or a missing `.node` file:** the password library has a native part that Vercel may not
   bundle. Fix: switch the dependency to `@node-rs/argon2` (same hash format, so existing passwords still work). Ask for help
   with this swap.

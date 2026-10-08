@@ -1,6 +1,8 @@
 // Vercel function: every request to /api/... is served by the Nest app built into dist/.
+// dist/serverless.bundle.js is the compiled app with @nestjs/* folded in (see scripts/bundle-serverless.mjs):
+// Vercel cannot require() the ES-module NestJS packages directly.
 // The app's own routes have no /api prefix (/auth/login, /tickets), so it is removed here.
-const handler = require('../dist/serverless').default;
+const handler = require('../dist/serverless.bundle').default;
 
 module.exports = (req, res) => {
   req.url = req.url.replace(/^\/api(?=\/|\?|$)/, '') || '/';
