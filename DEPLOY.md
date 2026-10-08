@@ -79,7 +79,7 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
 
 1. Vercel → **Add New → Project** → import the repository.
 2. **Name:** `nst-connect-api`. **Root Directory:** `apps/api`. Leave "include source files outside the Root Directory" on.
-   **Node.js version:** 22. The settings in `apps/api/vercel.json` do the rest.
+   **Node.js version:** 24.x (also set by `engines` in `apps/api/package.json`; NestJS 12 is an ES module and the API loads it with `require`, which needs a current Node). The settings in `apps/api/vercel.json` do the rest.
 3. If the build says it cannot find packages, set the **Install Command** to `cd ../.. && npm ci`.
 4. Add these **Environment Variables** (Production):
 
