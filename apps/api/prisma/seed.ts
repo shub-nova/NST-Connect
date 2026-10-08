@@ -16,6 +16,12 @@ const DOMAIN = '@newtonschool.co';
 // back to the canonical one-POC-per-level layout.
 const RESET = process.env.SEED_RESET === 'true';
 
+// SEED_MODE=production seeds ONLY what a real deployment needs: the categories, the sub-categories and the
+// admin account. No made-up POC accounts: real people are added from Settings (the admin adds the L3s, who add
+// L2s, who add L1s). The admin signs up once with their real address to choose a password.
+const PRODUCTION = process.env.SEED_MODE === 'production';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL ?? `admin${DOMAIN}`).trim().toLowerCase();
+
 // POC accounts are "invited": the user row exists with no password. The person
 // completes registration with their real @newtonschool.co address, which sets
 // the password. Role and level come from this list, never from the sign-up form.
@@ -28,10 +34,14 @@ async function upsertPoc(email: string, name: string) {
 }
 
 async function main() {
+  if (PRODUCTION && !process.env.ADMIN_EMAIL) {
+    throw new Error('Set ADMIN_EMAIL to the real address of the admin, e.g. ADMIN_EMAIL=you@newtonschool.co npm run db:seed:production -w apps/api');
+  }
+  if (PRODUCTION && !ADMIN_EMAIL.endsWith(DOMAIN)) throw new Error(`ADMIN_EMAIL must end with ${DOMAIN}.`);
   await prisma.user.upsert({
-    where: { email: `admin${DOMAIN}` },
+    where: { email: ADMIN_EMAIL },
     update: {},
-    create: { email: `admin${DOMAIN}`, name: 'NST Admin', role: Role.SUPER_ADMIN },
+    create: { email: ADMIN_EMAIL, name: 'NST Admin', role: Role.SUPER_ADMIN },
   });
 
   for (const [index, cat] of CATEGORIES.entries()) {
@@ -48,6 +58,7 @@ async function main() {
         create: { categoryId: category.id, name: subName, sortOrder: subIndex },
       });
     }
+    if (PRODUCTION) continue; // no placeholder POCs in production
 
     // Three levels per category: L1 handles tickets, L2 takes escalations from L1, and L3 takes
     // escalations from L2. L3 is the top: its decisions are final.

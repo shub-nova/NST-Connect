@@ -24,8 +24,10 @@ export class StorageService implements OnModuleInit {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly webOrigin: string;
+  private readonly autoSetup: boolean;
 
   constructor(config: ConfigService) {
+    this.autoSetup = config.get<boolean>('STORAGE_AUTO_SETUP') ?? true;
     this.bucket = config.getOrThrow<string>('S3_BUCKET');
     this.webOrigin = new URL(config.getOrThrow<string>('WEB_URL')).origin;
     this.s3 = new S3Client({
@@ -39,43 +41,61 @@ export class StorageService implements OnModuleInit {
     });
   }
 
-  /** Create the bucket and allow browser uploads from the web app. The API still boots if storage is down. */
+  /** Sets the bucket up when the API starts. Skipped when STORAGE_AUTO_SETUP is off (serverless: run it once instead). */
   async onModuleInit() {
+    if (!this.autoSetup) return;
     try {
-      try {
-        await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
-      } catch {
-        await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
-        this.logger.log(`Created bucket ${this.bucket}`);
-      }
-      // The browser uploads directly to storage with a signed URL, which is a cross-origin
-      // request from the web app, so the bucket must explicitly allow that origin.
-      await this.s3.send(
-        new PutBucketCorsCommand({
-          Bucket: this.bucket,
-          CORSConfiguration: {
-            CORSRules: [
-              {
-                AllowedOrigins: [this.webOrigin],
-                AllowedMethods: ['PUT', 'GET', 'HEAD'],
-                AllowedHeaders: ['*'],
-                ExposeHeaders: ['ETag'],
-                MaxAgeSeconds: 3000,
-              },
-            ],
-          },
-        }),
-      );
+      await this.ensureBucketAndCors();
     } catch (err) {
-      this.logger.warn(`Storage not ready (${(err as Error).message}). Uploads will fail until it is.`);
+      this.logger.warn(
+        `Storage not ready (${(err as Error).message}). Uploads will fail until it is.`,
+      );
     }
   }
 
+  /** Create the bucket and allow browser uploads from the web app. Throws if the storage cannot be reached. */
+  async ensureBucketAndCors() {
+    try {
+      await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }));
+    } catch {
+      await this.s3.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      this.logger.log(`Created bucket ${this.bucket}`);
+    }
+    // The browser uploads directly to storage with a signed URL, which is a cross-origin
+    // request from the web app, so the bucket must explicitly allow that origin.
+    await this.s3.send(
+      new PutBucketCorsCommand({
+        Bucket: this.bucket,
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: [this.webOrigin],
+              AllowedMethods: ['PUT', 'GET', 'HEAD'],
+              AllowedHeaders: ['*'],
+              ExposeHeaders: ['ETag'],
+              MaxAgeSeconds: 3000,
+            },
+          ],
+        },
+      }),
+    );
+  }
+
   /** A short-lived URL the browser can PUT the file to. Type and length are part of the signature. */
-  presignUpload(key: string, contentType: string, sizeBytes: number, expiresInSeconds = 300) {
+  presignUpload(
+    key: string,
+    contentType: string,
+    sizeBytes: number,
+    expiresInSeconds = 300,
+  ) {
     return getSignedUrl(
       this.s3,
-      new PutObjectCommand({ Bucket: this.bucket, Key: key, ContentType: contentType, ContentLength: sizeBytes }),
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+        ContentLength: sizeBytes,
+      }),
       { expiresIn: expiresInSeconds },
     );
   }
@@ -96,8 +116,13 @@ export class StorageService implements OnModuleInit {
   /** Null when the object does not exist (the client never finished uploading). */
   async head(key: string): Promise<StoredObjectInfo | null> {
     try {
-      const res = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return { sizeBytes: res.ContentLength ?? 0, contentType: res.ContentType };
+      const res = await this.s3.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return {
+        sizeBytes: res.ContentLength ?? 0,
+        contentType: res.ContentType,
+      };
     } catch {
       return null;
     }
@@ -105,12 +130,18 @@ export class StorageService implements OnModuleInit {
 
   async readHead(key: string, bytes: number): Promise<Uint8Array> {
     const res = await this.s3.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key, Range: `bytes=0-${bytes - 1}` }),
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Range: `bytes=0-${bytes - 1}`,
+      }),
     );
     return (await res.Body?.transformToByteArray()) ?? new Uint8Array();
   }
 
   async remove(key: string) {
-    await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key })).catch(() => undefined);
+    await this.s3
+      .send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+      .catch(() => undefined);
   }
 }
