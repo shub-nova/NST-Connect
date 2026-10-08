@@ -28,7 +28,8 @@
     "db:demo-data": "tsx prisma/demo-data.ts",
     "db:studio": "prisma studio --browser none --port 5555",
     "mail:test": "tsx scripts/send-test-mail.ts",
-    "storage:setup": "tsx scripts/setup-storage.ts"
+    "storage:setup": "tsx scripts/setup-storage.ts",
+    "admin:set-password": "tsx scripts/set-admin-password.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

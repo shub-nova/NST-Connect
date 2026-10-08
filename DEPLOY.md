@@ -41,15 +41,25 @@ Free plans change. Check each provider's current limits before relying on them.
    DATABASE_URL='<direct connection string>' ADMIN_EMAIL='you@newtonschool.co' npm run db:seed:production -w apps/api
    ```
    The seed creates the 11 categories, their 57 sub-categories and one admin account (no password yet). It does **not**
-   create any made-up POC accounts. Use a real mailbox you can open for `ADMIN_EMAIL`.
+   create any made-up POC accounts. If you can open the `ADMIN_EMAIL` mailbox, sign up with it in the app. If you
+   cannot (for example a shared `admin@` address), set the password directly instead. It asks at a hidden prompt:
+   ```bash
+   DATABASE_URL='<direct connection string>' ADMIN_EMAIL='admin@newtonschool.co' npm run admin:set-password -w apps/api
+   ```
+   This only works for an existing Super Admin and also marks the address verified.
 4. Whenever a new version adds database changes, run the `db:deploy` line again **before** deploying.
 
 ## 2. File storage (Cloudflare R2)
 
 1. Create a bucket (for example `nst-connect-attachments`) and an API token with read and write access to it.
 2. Note the S3 address (`https://<account-id>.r2.cloudflarestorage.com`), the access key and the secret.
-3. After step 5 you will run `npm run storage:setup -w apps/api` once (with these values in your `.env`) so the bucket accepts
-   uploads from the web app.
+3. The bucket must allow uploads from the web app (CORS). An **Object Read & Write** token cannot change CORS, so
+   `npm run storage:setup -w apps/api` fails with "Access Denied". Set it in the dashboard instead: bucket → **Settings →
+   CORS Policy → Add**, and paste (with your real web address):
+   ```json
+   [{"AllowedOrigins":["https://<your-web-address>"],"AllowedMethods":["PUT","GET","HEAD"],"AllowedHeaders":["*"],"ExposeHeaders":["ETag"],"MaxAgeSeconds":3000}]
+   ```
+   `storage:setup` only works with a temporary **Admin Read & Write** token.
 
 ## 3. Rate-limit counters (Upstash Redis)
 
