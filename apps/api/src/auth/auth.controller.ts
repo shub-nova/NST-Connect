@@ -85,7 +85,7 @@ export class AuthController {
       httpOnly: true,
       sameSite: 'lax',
       secure: this.config.get('NODE_ENV') === 'production',
-      path: '/auth',
+      path: this.config.get<string>('COOKIE_PATH') ?? '/auth',
     };
   }
 
