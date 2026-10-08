@@ -13,6 +13,8 @@ const schema = z.object({
 
   STUDENT_EMAIL_DOMAIN: z.string().default('adypu.edu.in'),
   POC_EMAIL_DOMAIN: z.string().default('newtonschool.co'),
+  /** Lets a production deployment keep extra student domains (for example gmail.com) while it is still being tested. Remove before going live. */
+  ALLOW_TEST_STUDENT_DOMAINS: z.stringbool().default(false),
 
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().default(1025),
@@ -65,8 +67,8 @@ export function productionProblems(env: Env, platform: { onVercel?: boolean } = 
   if (isLocal(env.S3_ENDPOINT)) problems.push('S3_ENDPOINT points at this computer. Use real file storage (R2, B2 or Supabase).');
   if (env.S3_ACCESS_KEY === 'nstconnect') problems.push('S3_ACCESS_KEY is the development key. Use the storage provider key.');
   if (isLocal(env.SMTP_HOST) || !env.SMTP_USER) problems.push('Email is not set up for real delivery (SMTP_HOST, SMTP_USER, SMTP_PASS).');
-  if (env.STUDENT_EMAIL_DOMAIN.split(',').filter((d) => d.trim()).length > 1) {
-    problems.push('STUDENT_EMAIL_DOMAIN lists more than one domain. Extra domains are for testing only: remove them.');
+  if (!env.ALLOW_TEST_STUDENT_DOMAINS && env.STUDENT_EMAIL_DOMAIN.split(',').filter((d) => d.trim()).length > 1) {
+    problems.push('STUDENT_EMAIL_DOMAIN lists more than one domain. Extra domains are for testing only: remove them, or set ALLOW_TEST_STUDENT_DOMAINS=true while you are still testing.');
   }
   if (platform.onVercel && (!env.JOB_SECRET || env.ESCALATION_JOB_ENABLED)) {
     problems.push('On Vercel there is no always-on process: set ESCALATION_JOB_ENABLED=false and JOB_SECRET, and call /internal/escalation/run on a schedule.');

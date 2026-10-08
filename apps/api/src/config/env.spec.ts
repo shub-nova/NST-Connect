@@ -53,4 +53,10 @@ describe('production safety check', () => {
     const ok = validateEnv({ ...good, ESCALATION_JOB_ENABLED: 'false', JOB_SECRET: 'a-long-random-secret-1234' });
     expect(productionProblems(ok, { onVercel: true })).toEqual([]);
   });
+
+  it('allows extra student domains only when testing is switched on', () => {
+    const testing = { ...good, STUDENT_EMAIL_DOMAIN: 'adypu.edu.in,gmail.com' };
+    expect(() => validateEnv(testing)).toThrow(/more than one domain/);
+    expect(() => validateEnv({ ...testing, ALLOW_TEST_STUDENT_DOMAINS: 'true' })).not.toThrow();
+  });
 });
