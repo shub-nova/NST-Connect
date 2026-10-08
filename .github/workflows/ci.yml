@@ -3,16 +3,47 @@ on:
   pull_request:
   push:
     branches: [main]
+
 jobs:
   check:
+    name: Lint, unit tests, build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run db:generate -w apps/api
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start Postgres, file storage and the mail catcher
+        run: docker compose up -d
+      - name: Create the test database and wait for the services
+        run: |
+          for i in $(seq 1 30); do docker compose exec -T db pg_isready -U nstconnect && break; sleep 2; done
+          docker compose exec -T db psql -U nstconnect -d postgres -c "create database nstconnect_test;"
+          for i in $(seq 1 30); do curl -sf http://localhost:8025/api/v1/info >/dev/null && break; sleep 2; done
+      - name: Prepare settings
+        run: cp .env.example .env
+      - name: Create the database tables
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgresql://nstconnect:nstconnect_dev@localhost:5432/nstconnect_test
+        run: |
+          npx prisma generate
+          npx prisma migrate deploy
+      - run: npm run test:e2e -w apps/api
