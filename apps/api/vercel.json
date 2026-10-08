@@ -3,7 +3,8 @@
   "framework": null,
   "buildCommand": "npm run build",
   "outputDirectory": "public",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }],
   "functions": {
-    "api/[...path].js": { "maxDuration": 30, "includeFiles": "dist/**" }
+    "api/index.js": { "maxDuration": 30, "includeFiles": "dist/**" }
   }
 }
