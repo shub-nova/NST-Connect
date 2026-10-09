@@ -1,6 +1,6 @@
-# ER diagram (database schema draft)
+# ER diagram (database schema)
 
-Draft for Sprint 0 review. Renders on GitHub. Types are indicative; exact column types are decided in the first migration.
+The PostgreSQL schema as migrated, in the same order as `apps/api/prisma/schema.prisma` (the source of truth). Renders on GitHub.
 
 ```mermaid
 erDiagram
@@ -12,6 +12,7 @@ erDiagram
         enum role "STUDENT, POC, SUPER_ADMIN"
         string enrollment_id "students, from email local part"
         timestamp email_verified_at
+        timestamp deactivated_at "set when a person is removed from their last role: they can no longer log in"
         timestamp created_at
     }
     CATEGORY {
@@ -37,6 +38,7 @@ erDiagram
         uuid manager_assignment_id FK "the L(n+1) POC who oversees this one"
         boolean active
         boolean on_leave
+        timestamp on_leave_until "leave ends by itself on this date"
     }
     TICKET {
         uuid id PK
@@ -46,13 +48,15 @@ erDiagram
         uuid sub_category_id FK "what exactly the issue is about"
         uuid student_id FK
         enum priority "LOW, MEDIUM, HIGH"
-        enum status "CREATED, ASSIGNED, IN_PROGRESS, ESCALATED, RESOLVED, REOPENED"
+        enum status "CREATED, ASSIGNED, IN_PROGRESS, ESCALATED, RESOLVED (shown as Solved), CLOSED, REOPENED"
         int current_level
         int resolved_level "set on resolve, used on reopen"
         uuid assigned_poc_id FK "nullable, internal only"
         timestamp tat_deadline
-        boolean critical
-        uuid parent_ticket_id FK "nullable, duplicate master"
+        timestamp tat_warned_at "when the 12-hours-left warning went out for this deadline"
+        boolean critical "top level reached and still nobody acted"
+        boolean closed_by_student "the student closed it themselves; not a POC outcome"
+        uuid parent_ticket_id FK "reserved for duplicate linking; not used yet"
         timestamp created_at
         timestamp updated_at
         timestamp resolved_at
@@ -60,7 +64,7 @@ erDiagram
     TICKET_EVENT {
         uuid id PK
         uuid ticket_id FK
-        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, REOPENED, LINKED, UNLINKED"
+        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, CLOSED, REOPENED, LINKED, UNLINKED, REASSIGNED, CLOSED_BY_STUDENT"
         uuid actor_id FK "null for system"
         uuid assignee_id FK "who the ticket went to (ASSIGNED, ESCALATED, REOPENED)"
         enum from_status
@@ -68,6 +72,7 @@ erDiagram
         int from_level
         int to_level
         enum visibility "PUBLIC, INTERNAL"
+        enum reason "on ESCALATED: MANUAL, TAT_BREACH, ON_LEAVE"
         text note "e.g. POC unavailable"
         timestamp created_at
     }
@@ -111,12 +116,34 @@ erDiagram
     NOTIFICATION {
         uuid id PK
         uuid user_id FK
-        enum type "STATUS_CHANGE, COMMENT, MENTION, ESCALATION, RESOLVED, NUDGE, NEW_TICKET"
+        enum type "STATUS_CHANGE, COMMENT, MENTION, ESCALATION, RESOLVED, NUDGE, NEW_TICKET, TAT_WARNING, TAT_MISSED, CRITICAL"
         uuid ticket_id FK
         uuid comment_id FK "nullable, deep link"
         timestamp read_at
         timestamp emailed_at "outbox: null until sent"
         timestamp created_at
+    }
+    STAFF_AUDIT {
+        uuid id PK
+        uuid actor_id FK "who made the change"
+        string action "ADDED, UPDATED, REMOVED, LEAVE_ON, LEAVE_OFF, INVITE_SENT"
+        uuid target_user_id FK "nullable"
+        uuid category_id "nullable"
+        string summary "readable, e.g. Added Ravi as L1"
+        timestamp created_at
+    }
+    ADMIN_NOTE {
+        uuid id PK
+        uuid author_id FK "the Super Admin"
+        text body
+        string audience "in words, e.g. Hostel - L2"
+        string context "what the admin was looking at"
+        timestamp created_at
+    }
+    ADMIN_NOTE_RECEIPT {
+        uuid note_id PK, FK
+        uuid user_id PK, FK
+        timestamp seen_at "null until opened"
     }
     REFRESH_TOKEN {
         uuid id PK
@@ -154,6 +181,11 @@ erDiagram
     USER ||--o{ NOTIFICATION : "receives"
     TICKET ||--o{ NOTIFICATION : "about"
     USER ||--o{ REFRESH_TOKEN : "owns"
+    USER ||--o{ STAFF_AUDIT : "makes changes"
+    USER |o--o{ STAFF_AUDIT : "is changed"
+    USER ||--o{ ADMIN_NOTE : "writes (admin)"
+    ADMIN_NOTE ||--o{ ADMIN_NOTE_RECEIPT : "one per recipient"
+    USER ||--o{ ADMIN_NOTE_RECEIPT : "receives"
 ```
 
 ## Design decisions
@@ -161,28 +193,41 @@ erDiagram
 | Decision | Why |
 | --- | --- |
 | Two-level categories: `CATEGORY` (11 main, including "Other") and `SUB_CATEGORY` (57) | Students pick a topic then what exactly it is; POCs are assigned per main category, while analytics can drill into sub-categories. Retired categories are marked inactive because old tickets still point at them. |
-| `role` is only STUDENT, POC or SUPER_ADMIN; level lives on `POC_ASSIGNMENT` | A POC's level and category can change without changing their account, and one person can in theory cover more than one category. |
-| `manager_assignment_id` links an L1 assignment to its L2 | This is what lets an L2 see only the L1 team they oversee (the rollup and nudge features). |
-| `assigned_poc_id` is on the ticket but never exposed to students | Students get a team label built from `category` and `current_level`. Student response models have no POC fields at all (NFR-02). |
-| `TICKET_EVENT` is append-only with a `visibility` flag | Satisfies the audit requirement; INTERNAL events (nudges, "POC on leave" notes) are never selected by student queries. |
+| `role` is only STUDENT, POC or SUPER_ADMIN; level lives on `POC_ASSIGNMENT` | A POC's level and category can change without changing their account, and one person can cover more than one category. Signing up as staff creates a POC with no assignment: access only comes from being added in Settings. |
+| `manager_assignment_id` links an L1 assignment to its L2 | This is what lets an L2 see only the L1 team they oversee, and decides who can add or remove whom. |
+| Removing a person is a deactivation (`deactivated_at`, `active = false`), never a delete | Tickets, events and feedback still point at them. |
+| `assigned_poc_id` is on the ticket but never exposed to students | Students get a team label built from `category` and `current_level`. Student response models have no POC fields at all. |
+| `TICKET_EVENT` is append-only with a `visibility` flag | The audit trail. INTERNAL events (nudges, hand-offs when someone goes on leave) are never selected by student queries. Events carry `assignee_id`, which is how analytics know which POC held a ticket and for how long. |
+| `TICKET_FEEDBACK` is linked to the finishing event | One answer per finish, so a reopened and re-finished ticket can be rated again. The POC who finished it is credited (`finished_by_id`), whoever held it earlier. |
+| Student self-close uses `CLOSED_BY_STUDENT` plus `closed_by_student` | It leaves the POC's queue but is never counted as a POC Solved or Closed. |
 | `visibility` on `COMMENT` as well | Supports POC-to-POC internal comments hidden from the student. |
 | `resolved_level` on the ticket | Reopen returns the ticket to the level that resolved it. |
-| `NOTIFICATION.emailed_at` | Acts as the outbox: the worker sends pending notifications and stamps the time, so email can be added without changing ticket code. |
-| `parent_ticket_id` | Duplicate linking: children mirror the master's status and level. |
-| `ATTACHMENT.scan_status` | Files are not visible until the antivirus scan marks them CLEAN. |
-| `JOB_HEARTBEAT` | The monitoring alert fires if the escalation job has not recorded a run in 15 minutes. |
+| `ADMIN_NOTE` and its receipts are staff-only | No student endpoint or query touches these tables. The receipt rows fix the recipients at send time. |
+| `STAFF_AUDIT` | The "Recent changes" list in Settings. |
+| `JOB_HEARTBEAT` | The escalation endpoint records each run, so a missed schedule can be seen. |
+| Escalation is driven by `tat_deadline` and `tat_warned_at` | A scheduled call finds open tickets past their deadline and moves them up; the warning is sent once per deadline. |
 
-## Indexes planned (NFR-17)
+## Reserved, not used yet
 
-- `ticket(status, current_level, tat_deadline)` for the escalation job and POC dashboards
-- `ticket(student_id, created_at)` for "My Tickets"
+These columns exist but no feature uses them today. They are kept so adding the feature later needs no data migration:
+
+- `ticket.parent_ticket_id` and the `LINKED` / `UNLINKED` events: duplicate-ticket linking.
+- `ticket.priority`: students never set or see it (default MEDIUM).
+- `attachment.scan_status`: an attachment becomes CLEAN once the upload is confirmed. There is no antivirus scan yet.
+- `notification.emailed_at`: reserved for an email outbox.
+
+## Indexes
+
+- `ticket(status, current_level, tat_deadline)` for the escalation job and POC queues
+- `ticket(student_id, created_at)` for "My tickets"
 - `ticket(category_id, status)` for queues and analytics
 - `ticket_event(ticket_id, created_at)` for timelines, `ticket_event(created_at)` for analytics date ranges
 - `comment(ticket_id, created_at)`, `notification(user_id, read_at)`
-- `pg_trgm` index on `ticket(title, description)` for duplicate suggestions
+- `ticket_feedback(category_id, created_at)`, `(finished_by_id, created_at)`, `(ticket_id)` for satisfaction analytics
+- `poc_assignment(category_id, level, active)` for routing
+- `staff_audit(category_id, created_at)`, `admin_note(created_at)`, `admin_note_receipt(user_id, seen_at)`
 
-## Open points to confirm
+## Known gaps
 
-1. Can one POC hold assignments in more than one category? The schema allows it.
-2. Decided: students do not set `priority`. The column stays (default MEDIUM) for POCs to use later; students never send or see it.
-3. Retention: how long are tickets, attachments and events kept?
+1. Retention: how long tickets, attachments and events are kept is not decided.
+2. No full-text search on tickets yet (a trigram index was considered for duplicate suggestions).

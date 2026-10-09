@@ -1,8 +1,8 @@
 # NST Connect
 
-Helpdesk and ticketing system for Newton School Students. Students raise tickets, each ticket is routed to its category's POC, and tickets that sit untouched for X hours escalate automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
+Helpdesk and ticketing system for Newton School students. Students raise tickets, each ticket is routed to its category's POC, and tickets that sit untouched for 48 hours escalate automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
 
-Status: **Sprint 0 (foundation)**. The scaffold runs; product features start in Increment 1.
+**What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it; `docs/` has the database and ticket-lifecycle diagrams.
 
 ## Repository layout
 
@@ -10,13 +10,13 @@ Status: **Sprint 0 (foundation)**. The scaffold runs; product features start in 
 | --- | --- |
 | `apps/web` | Next.js frontend (Tailwind) |
 | `apps/api` | NestJS backend |
-| `packages/shared` | Shared TypeScript types and constants (`@nst-connect/shared`) |
-| `docs/` | PRD, implementation plan, ADRs, API spec (to be added) |
+| `docs/` | Database diagram (`er-diagram.md`) and ticket lifecycle (`state-diagram.md`) |
+| `DEPLOY.md` | Step-by-step hosting guide (Vercel, Neon, R2, Upstash) |
 | `docker-compose.yml` | Local Postgres, S3-compatible storage, Mailpit |
 
 ## Prerequisites
 
-- Node.js 20 or newer (with npm)
+- Node.js 22.12 or newer, 24 recommended (with npm). The API loads NestJS 12, an ES module, with `require`, which needs a current Node.
 - Docker Desktop, running
 - Git
 
@@ -114,8 +114,8 @@ To add or change categories, sub-categories or POCs, edit `apps/api/prisma/categ
 
 Every ticket has a 48-hour clock for the POC it is assigned to. Each action by that POC (reply, mark in progress, solve, close, escalate) restarts the clock. If it runs out, the ticket moves up one level (L1 → L2 → L3), the POC who did nothing gets a "missed" notification, and the next level gets a fresh 48 hours. A ticket that runs out at the top level is flagged **critical** and the Super Admin is notified. POCs get a warning 12 hours before their deadline. Students only see "Escalated to <team>".
 
-- **Runs:** inside the API every 15 minutes (and once ~10 seconds after it starts, to catch up after downtime). Settings: `ESCALATION_JOB_ENABLED`, `ESCALATION_INTERVAL_MINUTES`, `TAT_WARNING_HOURS` in `.env`.
-- **From an external scheduler** (GitHub Actions, Render cron): set `JOB_SECRET` (16+ characters) and call `POST /internal/escalation/run` with the header `x-job-secret`. Without `JOB_SECRET` that endpoint does not exist.
+- **On a server that stays running:** inside the API every 15 minutes (and once ~10 seconds after it starts, to catch up after downtime). Settings: `ESCALATION_JOB_ENABLED`, `ESCALATION_INTERVAL_MINUTES`, `TAT_WARNING_HOURS` in `.env`.
+- **On serverless hosting (Vercel):** there is no timer, so set `ESCALATION_JOB_ENABLED=false` and `JOB_SECRET` (16+ characters), and let a schedule call `POST /internal/escalation/run` with the header `x-job-secret`. `.github/workflows/escalation.yml` does this hourly. Without `JOB_SECRET` that endpoint does not exist.
 - **Try it locally:** raise a ticket, then push its deadline into the past and restart the API:
 
 ```bash
@@ -292,4 +292,4 @@ Stop services with `docker compose down` (add `-v` to also delete their data).
 
 ## Stack
 
-Next.js, NestJS, PostgreSQL, S3-compatible storage (Cloudflare R2 in production), GitHub Actions, Docker. Free-tier hosting first (Vercel, Render, Neon).
+Next.js, NestJS, PostgreSQL (Prisma), S3-compatible storage (Cloudflare R2 in production), Redis for shared rate limits (Upstash), GitHub Actions, Docker for local services. Hosted on free tiers: Vercel (web and API), Neon, Cloudflare R2, Upstash.

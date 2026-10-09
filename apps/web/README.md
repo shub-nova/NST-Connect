@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NST Connect Web
 
-## Getting Started
+The Next.js front end for NST Connect: the student ticket screens, the POC queue and ticket view, Settings, and the analytics dashboards.
+See the [root README](../../README.md) for setup and [DEPLOY.md](../../DEPLOY.md) for hosting.
 
-First, run the development server:
+## Scripts
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Run from the repo root with `-w apps/web`, or use the root shortcut.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Command | What it does |
+| --- | --- |
+| `npm run dev:web` | Start in development mode on port 3001 |
+| `npm run build -w apps/web` | Production build |
+| `npm run lint -w apps/web` | Lint with ESLint |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path | Contents |
+| --- | --- |
+| `src/app/` | Routes (App Router). `(app)/` holds the signed-in screens; `login`, `register` and `verify` are public. |
+| `src/components/` | Screens and shared UI: `AppShell` (navigation), `AnalyticsView`, `TicketComposer`, `AdminNotes`, `StaffDialogs`, `BulkDialog`, `FeedbackCard`, `ui.tsx` (small building blocks). |
+| `src/lib/` | `api.ts` (all calls to the API, with silent token refresh), `auth.tsx` (session context), `files.ts` (uploads), `types.ts` (response shapes). |
 
-## Learn More
+## How it talks to the API
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- In development the browser calls the API directly (`NEXT_PUBLIC_API_URL`, default `http://localhost:3000`).
+- In production `API_ORIGIN` makes `next.config.ts` forward `/api/*` to the API project, so the browser only ever uses the web address and the login cookie stays same-site.
+- The access token lives in memory; the refresh token is an httpOnly cookie set by the API.
