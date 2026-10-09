@@ -2,10 +2,11 @@ name: Escalation check
 
 # Moves tickets that nobody acted on for 48 hours up a level, and sends the "12 hours left" warnings.
 # The API runs on serverless hosting with no always-on timer, so this schedule is what drives it.
-# GitHub may start scheduled runs a few minutes late; that is fine for a 48-hour limit.
+# Hourly on purpose: every run costs a billed minute, and a private repository on the free plan has 2,000 a month
+# (every 15 minutes would use about 2,900). GitHub may also start runs a few minutes late; both are fine for a 48-hour limit.
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7 * * * *"
   workflow_dispatch:
 
 jobs:

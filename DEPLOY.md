@@ -129,7 +129,7 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
    - `API_URL` = `https://nst-connect-api.vercel.app`
    - `JOB_SECRET` = the second random secret
 
-   The "Escalation check" workflow then calls the API every 15 minutes. Run it once by hand (Actions → Escalation check →
+   The "Escalation check" workflow then calls the API every hour (at 7 minutes past; every 15 minutes would use up the 2,000 free Actions minutes of a private repository). Run it once by hand (Actions → Escalation check →
    Run workflow) and look for a result like `{"escalated":0,...}`.
 4. **Admin:** open the web address → Sign up with the `ADMIN_EMAIL` address, click the link in the email, then log in. You land on
    **All teams**. From **Settings**, add the L3 people for each category; they add L2s, who add L1s. People can also sign up

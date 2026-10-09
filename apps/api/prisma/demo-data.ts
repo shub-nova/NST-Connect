@@ -1,6 +1,7 @@
 import { config as loadEnv } from 'dotenv';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import * as argon2 from 'argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { EventType, Prisma, PrismaClient, Role, TicketStatus } from '../src/generated/prisma/client';
 
@@ -12,6 +13,15 @@ import { EventType, Prisma, PrismaClient, Role, TicketStatus } from '../src/gene
  *   npm run db:demo-data -w apps/api -- 6000    # more
  *   npm run db:demo-data -w apps/api -- --clean # only remove the demo data
  *
+ * A category with nobody assigned gets made-up staff (demo.staff.<team>.l1/l2/l3@newtonschool.co, no password, so
+ * nobody can log in as them) to play the workflow. Categories that already have real staff use them. --clean
+ * removes the made-up students, the made-up staff and all their tickets; real people and real tickets stay.
+ *
+ * To log in as the made-up staff (for example to see the L1, L2 and L3 screens), also set DEMO_STAFF_PASSWORD (10+
+ * characters). Without it nobody can log in as them. Use a throwaway password: --clean removes the accounts again.
+ *
+ * Against a hosted database (Neon), it refuses unless you also set DEMO_ON_HOSTED_DB=yes.
+ *
  * Tickets belong to made-up students (demo.student.N@adypu.edu.in, no password, so nobody can
  * log in as them). Running it again replaces the previous demo data. Real tickets are never touched.
  * The generator plays the real workflow: assignment, acting within 48h, manual escalation,
@@ -21,6 +31,8 @@ loadEnv({ path: path.resolve(__dirname, '../../../.env') });
 
 const DEMO_DOMAIN = '@adypu.edu.in';
 const DEMO_PREFIX = 'demo.student.';
+const DEMO_STAFF_PREFIX = 'demo.staff.';
+const DEMO_STAFF_DOMAIN = '@newtonschool.co';
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
 const DAYS = 90;
@@ -153,8 +165,23 @@ interface Poc {
   medianHours: number;
 }
 
+function refuseHostedDatabase() {
+  const host = (() => {
+    try {
+      return new URL(process.env.DATABASE_URL ?? '').hostname;
+    } catch {
+      return '';
+    }
+  })();
+  const local = ['localhost', '127.0.0.1', '::1', '[::1]', ''].includes(host);
+  if (!local && process.env.DEMO_ON_HOSTED_DB !== 'yes') {
+    throw new Error(`DATABASE_URL points at ${host}, not this computer. To put demo data there on purpose, add DEMO_ON_HOSTED_DB=yes. Remove it later with --clean.`);
+  }
+}
+
 async function main() {
   if (process.env.NODE_ENV === 'production') throw new Error('Refusing to run in production.');
+  refuseHostedDatabase();
   const args = process.argv.slice(2);
   const cleanOnly = args.includes('--clean');
   const count = Number(args.find((a) => /^\d+$/.test(a)) ?? 2500);
@@ -165,13 +192,32 @@ async function main() {
     if (cleanOnly) return console.log('Demo data removed.');
 
     const now = new Date();
-    const categories = await prisma.category.findMany({
-      where: { active: true },
-      include: {
-        subCategories: { where: { active: true }, orderBy: { sortOrder: 'asc' } },
-        pocAssignments: { where: { active: true }, include: { user: true } },
-      },
-    });
+    const loadCategories = () =>
+      prisma.category.findMany({
+        where: { active: true },
+        include: {
+          subCategories: { where: { active: true }, orderBy: { sortOrder: 'asc' } },
+          pocAssignments: { where: { active: true }, include: { user: true } },
+        },
+      });
+    let categories = await loadCategories();
+    const staffPassword = process.env.DEMO_STAFF_PASSWORD ?? '';
+    if (staffPassword && staffPassword.length < 10) throw new Error('DEMO_STAFF_PASSWORD must be at least 10 characters.');
+    const staffHash = staffPassword ? await argon2.hash(staffPassword, { type: argon2.argon2id }) : null;
+    // Give every category with nobody assigned a made-up L3 > L2 > L1 team, so the tickets have someone to move between.
+    for (const c of categories.filter((c) => c.pocAssignments.length === 0)) {
+      const tag = c.shortName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const make = async (level: number, managerAssignmentId: string | null) => {
+        const user = await prisma.user.create({
+          data: { email: `${DEMO_STAFF_PREFIX}${tag}.l${level}${DEMO_STAFF_DOMAIN}`, name: `Demo ${c.shortName} L${level}`, role: Role.POC, emailVerifiedAt: now, ...(staffHash ? { passwordHash: staffHash } : {}) },
+        });
+        return prisma.pOCAssignment.create({ data: { userId: user.id, categoryId: c.id, level, managerAssignmentId } });
+      };
+      const l3 = await make(3, null);
+      const l2 = await make(2, l3.id);
+      await make(1, l2.id);
+    }
+    categories = await loadCategories();
     const slugOf = (shortName: string) =>
       ({ Hostel: 'hostel', 'Mess & Food': 'mess', Academics: 'academics', 'Exams & Grading': 'exams', 'Attendance & Leave': 'attendance',
          'Fees & Finance': 'fees', Documents: 'documents', 'Internship & Placement': 'placements', 'Campus & IT': 'campus',
@@ -361,7 +407,7 @@ async function main() {
 async function clean(prisma: PrismaClient) {
   const demo = await prisma.user.findMany({ where: { email: { startsWith: DEMO_PREFIX, endsWith: DEMO_DOMAIN }, role: Role.STUDENT }, select: { id: true } });
   const studentIds = demo.map((d) => d.id);
-  if (!studentIds.length) return;
+  if (!studentIds.length) return cleanStaff(prisma);
   const tickets = { ticket: { studentId: { in: studentIds } } };
   await prisma.notification.deleteMany({ where: { OR: [{ userId: { in: studentIds } }, tickets] } });
   await prisma.commentMention.deleteMany({ where: { comment: tickets } });
@@ -371,6 +417,25 @@ async function clean(prisma: PrismaClient) {
   await prisma.ticketEvent.deleteMany({ where: tickets });
   await prisma.ticket.deleteMany({ where: { studentId: { in: studentIds } } });
   await prisma.user.deleteMany({ where: { id: { in: studentIds } } });
+  await cleanStaff(prisma);
+}
+
+/** The made-up staff. Run after the tickets are gone; if something real still points at them they are only switched off. */
+async function cleanStaff(prisma: PrismaClient) {
+  const staff = await prisma.user.findMany({ where: { email: { startsWith: DEMO_STAFF_PREFIX, endsWith: DEMO_STAFF_DOMAIN }, role: Role.POC }, select: { id: true } });
+  const ids = staff.map((u) => u.id);
+  if (!ids.length) return;
+  try {
+    await prisma.$transaction([
+      prisma.pOCAssignment.updateMany({ where: { userId: { in: ids } }, data: { managerAssignmentId: null } }),
+      prisma.notification.deleteMany({ where: { userId: { in: ids } } }),
+      prisma.pOCAssignment.deleteMany({ where: { userId: { in: ids } } }),
+      prisma.user.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+  } catch {
+    await prisma.pOCAssignment.updateMany({ where: { userId: { in: ids } }, data: { active: false } });
+    console.log('Some demo staff are still referenced by real records, so they were switched off instead of deleted.');
+  }
 }
 
 main().catch((e) => {
