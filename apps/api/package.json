@@ -1,8 +1,7 @@
 {
   "name": "api",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "NST Connect API: tickets, POC workflow, auto-escalation and analytics (NestJS, Prisma, PostgreSQL).",
   "private": true,
   "license": "UNLICENSED",
   "engines": {

@@ -1,9 +1,9 @@
 {
   "name": "nst-connect",
   "private": true,
+  "description": "NST Connect: an internal helpdesk where students raise issues and the right team resolves them within 48 hours.",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "scripts": {
     "dev:api": "npm run start:dev -w apps/api",
@@ -11,8 +11,5 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present"
-  },
-  "dependencies": {
-    "@nestjs/platform-express": "^12.1.2"
   }
 }
