@@ -1,6 +1,9 @@
 # Deploying NST Connect (free tiers, both apps on Vercel)
 
-Two Vercel projects from this one repository, plus a few free services:
+Two Vercel projects from this one repository, plus a few free services.
+
+> **Testing mode:** while testing, extra email domains (Gmail) and demo data are allowed. Before real users arrive, follow [docs/go-live-checklist.md](docs/go-live-checklist.md).
+
 
 | Part | Where | Free plan |
 | --- | --- | --- |

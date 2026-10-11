@@ -2,7 +2,7 @@
 
 Helpdesk and ticketing system for Newton School students. Students raise tickets, each ticket is routed to its category's POC, and tickets that sit untouched for 48 hours escalate automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
 
-**What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it; `docs/` has the database and ticket-lifecycle diagrams.
+**What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it, and [docs/go-live-checklist.md](docs/go-live-checklist.md) lists what to switch off before real users arrive; `docs/` has the database and ticket-lifecycle diagrams.
 
 ## Repository layout
 
@@ -10,7 +10,7 @@ Helpdesk and ticketing system for Newton School students. Students raise tickets
 | --- | --- |
 | `apps/web` | Next.js frontend (Tailwind) |
 | `apps/api` | NestJS backend |
-| `docs/` | Database diagram (`er-diagram.md`) and ticket lifecycle (`state-diagram.md`) |
+| `docs/` | Database diagram (`er-diagram.md`), ticket lifecycle (`state-diagram.md`) and the go-live checklist (`go-live-checklist.md`) |
 | `DEPLOY.md` | Step-by-step hosting guide (Vercel, Neon, R2, Upstash) |
 | `docker-compose.yml` | Local Postgres, S3-compatible storage, Mailpit |
 
