@@ -8,7 +8,7 @@ import type { Category } from "@/lib/types";
 
 // Home for students: just the form. Their ticket list lives on its own page ("My tickets").
 export default function RaiseTicketPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,7 +23,12 @@ export default function RaiseTicketPage() {
         How can we <span className="text-accent">help</span>?
       </h1>
       <ErrorNote message={error} />
-      <TicketComposer categories={categories} />
+      {categories?.length === 0 && (
+        <p className="rounded-xl border border-dashed border-line bg-surface px-4 py-6 text-center text-sm text-muted">
+          Ticket topics are not open yet. Please check back soon.
+        </p>
+      )}
+      {categories && categories.length > 0 && <TicketComposer categories={categories} />}
     </div>
   );
 }

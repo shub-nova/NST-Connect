@@ -196,6 +196,8 @@ export interface AnalyticsData {
   members?: AnalyticsPerson[];
   breakdown?: AnalyticsBreakdownRow[];
   range: { from: string; to: string; days: number; bucket: "day" | "week" };
+  /** The escalation limit in hours (a whole number of days), so labels can say "2 days" instead of a fixed number. */
+  tatHours: number;
   headline: AnalyticsHeadline;
   /** Finished tickets by days taken; the last entry means that many days or more. */
   finishTimes: { days: number; count: number }[];
@@ -277,4 +279,43 @@ export interface HandoffSummary {
   reassigned: number;
   escalated: number;
   stranded: number;
+}
+
+// ---- Categories and topics (Super Admin) ---------------------------------------------------
+
+export interface CatalogTopic {
+  id: string;
+  name: string;
+  active: boolean;
+  /** Tickets that were ever raised with this topic. */
+  tickets: number;
+}
+
+export interface CatalogCategory {
+  id: string;
+  name: string;
+  shortName: string;
+  active: boolean;
+  tickets: number;
+  openTickets: number;
+  /** People currently assigned to it. */
+  staff: number;
+  /** Levels (1, 2, 3) nobody holds yet. While any is missing, students are not offered the category. */
+  missingLevels: number[];
+  topics: CatalogTopic[];
+}
+
+/** What a rename returns: how many open tickets got a "name updated" note on their timeline. */
+export interface RenameResult {
+  id: string;
+  updated: number;
+}
+
+/** The escalation time the Super Admin sets: how many days a POC has before a ticket moves up a level. */
+export interface EscalationSetting {
+  hours: number;
+  days: number;
+  defaultDays: number;
+  minDays: number;
+  maxDays: number;
 }
