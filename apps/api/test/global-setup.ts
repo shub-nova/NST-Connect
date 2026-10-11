@@ -25,10 +25,15 @@ export default async function globalSetup() {
       'TRUNCATE ticket_feedback, staff_audit, admin_note_receipt, admin_note, ticket_event, attachment, notification, comment_mention, comment, ticket, refresh_token RESTART IDENTITY CASCADE',
     );
     await client.query(`DELETE FROM "user" WHERE role = 'STUDENT'`);
+    // The escalation time goes back to the default (2 days), whatever a previous run left.
+    await client.query('DELETE FROM app_setting');
     // Seeded staff go back to "invited, not yet registered" so registration tests are repeatable.
     // Staff created by the Settings tests are removed; seeded staff go back to "not yet registered".
     await client.query(`DELETE FROM poc_assignment WHERE user_id IN (SELECT id FROM "user" WHERE email LIKE 'staff.test.%')`);
     await client.query(`DELETE FROM "user" WHERE email LIKE 'staff.test.%'`);
+    // Categories made by the catalogue spec, after their staff are gone (tickets and audit rows were cleared above).
+    await client.query(`DELETE FROM sub_category WHERE category_id IN (SELECT id FROM category WHERE name LIKE 'Catalog Test %')`);
+    await client.query(`DELETE FROM category WHERE name LIKE 'Catalog Test %'`);
     await client.query(`UPDATE "user" SET password_hash = NULL, email_verified_at = NULL, deactivated_at = NULL WHERE role <> 'STUDENT'`);
   } finally {
     await client.end();

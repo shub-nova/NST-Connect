@@ -51,6 +51,8 @@ enum EventType {
   REASSIGNED
   /// The student closed their own ticket. Not a POC outcome, so analytics never count it as Solved or Closed.
   CLOSED_BY_STUDENT
+  /// The category or topic of a ticket that was still open got a new name. Public, so the student sees it on the ticket.
+  RENAMED
 }
 
 /// How a student felt about the outcome of a finished ticket.
@@ -418,4 +420,15 @@ model JobHeartbeat {
   lastRunAt DateTime @map("last_run_at")
 
   @@map("job_heartbeat")
+}
+
+/// Settings the Super Admin can change in the app. One row per setting, keyed by name.
+/// Today: `escalation_hours`, how long a POC has to act before a ticket moves up a level.
+model AppSetting {
+  key         String   @id
+  value       String
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  updatedById String?  @map("updated_by_id") @db.Uuid
+
+  @@map("app_setting")
 }

@@ -1,6 +1,6 @@
 import type { Prisma } from '../generated/prisma/client';
 import { pickLeastLoadedOwner } from '../tickets/routing';
-import { TAT_HOURS } from '../tickets/tickets.service';
+import { deadlineAfter, getTatHours } from '../settings/tat';
 
 export interface HandoffResult {
   /** Moved to another POC at the same level. */
@@ -38,7 +38,7 @@ export async function handOffOpenTickets(
      FOR UPDATE`;
   if (!open.length) return result;
 
-  const deadline = new Date(now.getTime() + TAT_HOURS * 3600 * 1000);
+  const deadline = deadlineAfter(now, await getTatHours(tx));
   let admins: { id: string }[] | null = null;
 
   for (const { id } of open) {

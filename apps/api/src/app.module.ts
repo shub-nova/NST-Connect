@@ -19,6 +19,8 @@ import { PrismaModule } from './prisma/prisma.module';
 import { StorageModule } from './storage/storage.module';
 import { TicketsModule } from './tickets/tickets.module';
 import { AttachmentsModule } from './attachments/attachments.module';
+import { CatalogModule } from './catalog/catalog.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -52,6 +54,8 @@ import { AttachmentsModule } from './attachments/attachments.module';
     AnalyticsModule,
     NotesModule,
     StaffModule,
+    CatalogModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
   providers: [

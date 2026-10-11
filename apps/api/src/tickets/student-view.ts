@@ -98,6 +98,8 @@ export function timelineLabel(type: EventType, categoryName: string, toStatus: T
       return 'Closed';
     case 'REOPENED':
       return 'Reopened';
+    case 'RENAMED':
+      return 'Name updated';
     default:
       return 'Updated';
   }

@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { missingLevels, STAFFING_WHERE } from '../catalog/staffing';
+import { deadlineAfter, getTatHours } from '../settings/tat';
 import { Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { pickLeastLoadedOwner } from './routing';
@@ -12,8 +14,6 @@ import {
   timelineLabel,
   toStudentSummary,
 } from './student-view';
-
-export const TAT_HOURS = 48;
 
 /** How long a student can change their feedback after giving it. */
 const FEEDBACK_CHANGE_DAYS = 7;
@@ -48,21 +48,30 @@ export interface ListTicketsInput {
 export class TicketsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  listCategories() {
-    return this.prisma.category.findMany({
-      where: { active: true },
+  /**
+   * What a student may raise a ticket about: live categories with at least one topic AND somebody assigned at every
+   * level, so a new ticket always has a full chain to go through.
+   */
+  async listCategories() {
+    const categories = await this.prisma.category.findMany({
+      where: { active: true, subCategories: { some: { active: true } } },
       orderBy: { sortOrder: 'asc' },
       select: {
         id: true,
         name: true,
         shortName: true,
+        maxLevel: true,
         subCategories: {
           where: { active: true },
           orderBy: { sortOrder: 'asc' },
           select: { id: true, name: true },
         },
+        pocAssignments: { where: STAFFING_WHERE, select: { level: true } },
       },
     });
+    return categories
+      .filter((c) => missingLevels(c.maxLevel, c.pocAssignments.map((a) => a.level)).length === 0)
+      .map((c) => ({ id: c.id, name: c.name, shortName: c.shortName, subCategories: c.subCategories }));
   }
 
   /**
@@ -76,6 +85,11 @@ export class TicketsService {
     });
     if (!subCategory) throw new BadRequestException('Unknown topic.');
     const category = subCategory.category;
+    // The picker already hides categories without a full team; this stops a direct request or a stale page.
+    const staffed = await this.prisma.pOCAssignment.findMany({ where: { categoryId: category.id, ...STAFFING_WHERE }, select: { level: true } });
+    if (missingLevels(category.maxLevel, staffed.map((a) => a.level)).length > 0) {
+      throw new BadRequestException('This category is not taking tickets yet. Please try again later.');
+    }
 
     const ticketId = await this.prisma.$transaction(async (tx) => {
       // Normally level 1. If nobody is on duty there (everyone on leave), the ticket starts at the next
@@ -86,6 +100,7 @@ export class TicketsService {
       startLevel -= 1;
       if (!owner) startLevel = 1;
       const now = new Date();
+      const tatHours = await getTatHours(tx);
 
       const ticket = await tx.ticket.create({
         data: {
@@ -98,7 +113,7 @@ export class TicketsService {
           status: owner ? 'ASSIGNED' : 'CREATED',
           currentLevel: startLevel,
           assignedPocId: owner?.userId ?? null,
-          tatDeadline: owner ? new Date(now.getTime() + TAT_HOURS * 60 * 60 * 1000) : null,
+          tatDeadline: owner ? deadlineAfter(now, tatHours) : null,
         },
       });
 
@@ -210,7 +225,7 @@ export class TicketsService {
           status: 'REOPENED',
           currentLevel: owner.level,
           assignedPocId: owner.userId,
-          tatDeadline: new Date(Date.now() + TAT_HOURS * 60 * 60 * 1000),
+          tatDeadline: deadlineAfter(new Date(), await getTatHours(tx)),
           tatWarnedAt: null,
           critical: false,
           resolvedAt: null,
@@ -313,8 +328,9 @@ export class TicketsService {
         .map((e) => ({
           type: e.type,
           label: timelineLabel(e.type, team, e.toStatus),
-          // Solved and Closed carry a note for the student. An escalation's reason stays internal.
-          message: e.type === 'RESOLVED' || e.type === 'CLOSED' ? e.note : null,
+          // Solved and Closed carry a note for the student, and so does a rename ("The topic ... is now ...").
+          // An escalation's reason stays internal.
+          message: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'RENAMED' ? e.note : null,
           at: e.createdAt,
         })),
       ...t.comments.map((c) => ({

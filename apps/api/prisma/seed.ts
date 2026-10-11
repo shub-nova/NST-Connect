@@ -45,16 +45,18 @@ async function main() {
   });
 
   for (const [index, cat] of CATEGORIES.entries()) {
+    // Categories and topics are managed by the Super Admin in the app, so a normal run only creates what is
+    // missing and never renames, re-orders or restores anything. Only the test suite (RESET) puts them back.
     const category = await prisma.category.upsert({
       where: { name: cat.name },
-      update: { shortName: cat.shortName, sortOrder: index, active: true, maxLevel: 3 },
+      update: RESET ? { shortName: cat.shortName, sortOrder: index, active: true, maxLevel: 3 } : {},
       create: { name: cat.name, shortName: cat.shortName, sortOrder: index, maxLevel: 3 },
     });
 
     for (const [subIndex, subName] of cat.subCategories.entries()) {
       await prisma.subCategory.upsert({
         where: { categoryId_name: { categoryId: category.id, name: subName } },
-        update: { sortOrder: subIndex, active: true },
+        update: RESET ? { sortOrder: subIndex, active: true } : {},
         create: { categoryId: category.id, name: subName, sortOrder: subIndex },
       });
     }
@@ -94,10 +96,12 @@ async function main() {
     }
   }
 
-  // Categories from earlier seeds that are no longer in the list are hidden, not deleted,
-  // because existing tickets still point at them.
+  // Reset mode only: categories that are not in the list (left by earlier seeds or by tests) are hidden, not
+  // deleted, because existing tickets still point at them. A normal run never hides what the admin added.
   const keep = CATEGORIES.map((c) => c.name);
-  const retired = await prisma.category.updateMany({ where: { name: { notIn: keep }, active: true }, data: { active: false } });
+  const retired = RESET
+    ? await prisma.category.updateMany({ where: { name: { notIn: keep }, active: true }, data: { active: false } })
+    : { count: 0 };
 
   console.log('Seed complete:', {
     categories: await prisma.category.count({ where: { active: true } }),

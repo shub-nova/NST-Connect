@@ -1,4 +1,5 @@
-// The category taxonomy. Edit here and re-run the seed to change what students can pick.
+// The starting categories and topics. The seed only creates the ones that are missing. After that the Super Admin
+// manages them in the app (Categories page), and re-running the seed never renames, hides or restores anything.
 // `slug` only drives the seeded POC email addresses (e.g. hostel.l1.1@newtonschool.co).
 
 export interface CategorySeed {

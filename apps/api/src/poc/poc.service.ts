@@ -2,6 +2,7 @@ import { ConflictException, HttpException, Injectable, NotFoundException } from 
 import { pickLeastLoadedOwner } from '../tickets/routing';
 import { EventType, Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { deadlineAfter, getTatHours } from '../settings/tat';
 import { StorageService } from '../storage/storage.service';
 import { STATUS_LABELS } from '../tickets/student-view';
 import {
@@ -16,8 +17,6 @@ import {
   type QueueView,
 } from './queue-query';
 
-/** Every POC action restarts the 48-hour clock for the current level (cleared on resolve). */
-const TAT_HOURS = 48;
 
 /** A ticket in one of these is finished: no more replies or status changes. */
 const FINISHED: TicketStatus[] = ['RESOLVED', 'CLOSED'];
@@ -36,6 +35,7 @@ const POC_EVENT_LABELS: Partial<Record<EventType, string>> = {
   REOPENED: 'Reopened',
   REASSIGNED: 'Handed to another POC',
   CLOSED_BY_STUDENT: 'Closed by the student',
+  RENAMED: 'Category or topic renamed',
 };
 
 export type CloseOutcome = 'SOLVED' | 'CLOSED' | 'ESCALATED';
@@ -171,9 +171,9 @@ export class PocService {
           e.type === 'STATUS_CHANGED' && e.toStatus
             ? `Marked ${STATUS_LABELS[e.toStatus].toLowerCase()}`
             : e.type === 'ESCALATED' && e.toLevel
-              ? `Escalated to level ${e.toLevel}${e.reason === 'TAT_BREACH' ? ': no action within 48h' : e.reason === 'ON_LEAVE' ? ': owner on leave' : ''}`
+              ? `Escalated to level ${e.toLevel}${e.reason === 'TAT_BREACH' ? ': no action within the time limit' : e.reason === 'ON_LEAVE' ? ': owner on leave' : ''}`
               : (POC_EVENT_LABELS[e.type] ?? 'Updated'),
-        note: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'ESCALATED' || e.type === 'REASSIGNED' ? e.note : null,
+        note: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'ESCALATED' || e.type === 'REASSIGNED' || e.type === 'RENAMED' ? e.note : null,
         at: e.createdAt,
       })),
       ...t.comments.map((c): ThreadItem => ({
@@ -397,7 +397,8 @@ export class PocService {
         where: { id: ticketId },
         data: {
           assignedPocId: pocId,
-          tatDeadline: new Date(Date.now() + TAT_HOURS * 60 * 60 * 1000),
+          // Every POC action restarts the clock for the current level, using the limit the admin has set.
+          tatDeadline: deadlineAfter(new Date(), await getTatHours(tx)),
           // A POC acting restarts the clock: the warning can be sent again, and a ticket that
           // was flagged critical because nobody acted is no longer ignored.
           tatWarnedAt: null,

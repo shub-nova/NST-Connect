@@ -111,7 +111,7 @@ describe('Automatic escalation (e2e)', () => {
     const detail = await request(server()).get(`/poc/tickets/${ticketId}`).set(auth(l2Token)).expect(200);
     const labels = detail.body.thread.map((i: { label?: string }) => i.label);
     expect(labels).toContain('Missed the time limit');
-    expect(labels).toContain('Escalated to level 2: no action within 48h');
+    expect(labels).toContain('Escalated to level 2: no action within the time limit');
     const queue = await request(server()).get('/poc/queue').set(auth(l2Token)).expect(200);
     expect(queue.body.tickets.map((t: { id: string }) => t.id)).toContain(ticketId);
   });
@@ -185,20 +185,22 @@ describe('Automatic escalation (e2e)', () => {
   });
 
   it('skips a level with nobody on duty; with nobody above at all it flags critical', async () => {
+    // The tickets are raised while the whole team is in place (a category without every level takes no tickets);
+    // the levels empty out afterwards, for example when people leave.
+    const skipped = await newTicket();
+    await makeOverdue(skipped);
     await withLevelsInactive([2], async () => {
-      const ticketId = await newTicket();
-      await makeOverdue(ticketId);
       await job.runOnce();
-      expect(await row(ticketId)).toMatchObject({ currentLevel: 3, status: 'ESCALATED' }); // L1 → L3 directly
-      expect(await events(ticketId, 'ESCALATED').then((e) => e[0])).toMatchObject({ fromLevel: 1, toLevel: 3 });
+      expect(await row(skipped)).toMatchObject({ currentLevel: 3, status: 'ESCALATED' }); // L1 → L3 directly
+      expect(await events(skipped, 'ESCALATED').then((e) => e[0])).toMatchObject({ fromLevel: 1, toLevel: 3 });
     });
 
+    const stranded = await newTicket();
+    await makeOverdue(stranded);
     await withLevelsInactive([2, 3], async () => {
-      const ticketId = await newTicket();
-      await makeOverdue(ticketId);
       await job.runOnce();
-      expect(await row(ticketId)).toMatchObject({ currentLevel: 1, status: 'ASSIGNED', critical: true, tatDeadline: null });
-      expect(await events(ticketId, 'ESCALATED')).toHaveLength(0);
+      expect(await row(stranded)).toMatchObject({ currentLevel: 1, status: 'ASSIGNED', critical: true, tatDeadline: null });
+      expect(await events(stranded, 'ESCALATED')).toHaveLength(0);
     });
   });
 

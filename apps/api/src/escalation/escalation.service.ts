@@ -3,10 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { pickLeastLoadedOwner } from '../tickets/routing';
-import { TAT_HOURS } from '../tickets/tickets.service';
+import { deadlineAfter, getTatHours } from '../settings/tat';
 
 export interface EscalationRunResult {
-  /** Tickets moved up a level because the assigned POC did nothing for 48h. */
+  /** Tickets moved up a level because the assigned POC did nothing within the time limit. */
   escalated: number;
   /** Tickets with nowhere higher to go: flagged critical instead. */
   flaggedCritical: number;
@@ -20,8 +20,8 @@ const MAX_TICKETS_PER_RUN = 500;
 
 /**
  * Automatic escalation. Every POC action (reply, mark in progress, solve, close, escalate)
- * restarts the ticket's 48h clock, so a ticket whose deadline has passed is exactly one where
- * its assigned POC did nothing for 48 hours. This job moves such tickets up one level (to the
+ * restarts the ticket's clock, so a ticket whose deadline has passed is exactly one where
+ * its assigned POC did nothing within the limit (48 hours unless the admin changed it). This job moves such tickets up one level (to the
  * next level that has someone on duty), logs the miss against the POC who ignored it, and
  * warns the POC beforehand.
  *
@@ -169,7 +169,7 @@ export class EscalationService {
         status: 'ESCALATED',
         currentLevel: owner.level,
         assignedPocId: owner.userId,
-        tatDeadline: new Date(now.getTime() + TAT_HOURS * 60 * 60 * 1000),
+        tatDeadline: deadlineAfter(now, await getTatHours(tx)),
         tatWarnedAt: null,
       },
     });

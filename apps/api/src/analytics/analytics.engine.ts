@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { getTatHours } from '../settings/tat';
 import type { DateRange } from './range';
 import { topCommentPhrases, topTerms } from './words';
 
@@ -37,7 +38,7 @@ const pct = (part: number, whole: number) => (whole === 0 ? null : Math.round((p
  *  - Done by me: Solved / Closed / Escalated events whose actor is that POC.
  *  - Action needed: open tickets currently assigned to the POC. Total: tickets that had any
  *    activity involving the POC in the period.
- *  - Auto-escalated from me: the POC held the ticket for 48h without acting (TAT_BREACHED event).
+ *  - Auto-escalated from me: the POC held the ticket past the time limit without acting (TAT_BREACHED event).
  *    Auto-escalated to me: the ticket came to the POC because the previous level ran out of time.
  */
 @Injectable()
@@ -76,6 +77,8 @@ export class AnalyticsEngine {
   async headline(scope: Scope, range: DateRange, now = new Date()) {
     const { from, to } = range;
     const scoped = this.ticketScope(scope);
+    // "Finished within the limit" uses the limit as it is set now, the same one shown on the dashboard's labels.
+    const tatHours = await getTatHours(this.prisma);
 
     const [outcomes, finishRows, levelRows, openRows, totalRows, autoOut, autoIn, reopenRows, feedbackRows] = await Promise.all([
       this.prisma.$queryRaw<{ type: string; reason: string | null; n: bigint }[]>`
@@ -88,7 +91,7 @@ export class AnalyticsEngine {
         SELECT count(*) AS n,
                avg(extract(epoch FROM (e.created_at - t.created_at))) AS avg_s,
                percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (e.created_at - t.created_at))) AS med_s,
-               count(*) FILTER (WHERE e.created_at - t.created_at <= interval '48 hours') AS within
+               count(*) FILTER (WHERE e.created_at - t.created_at <= make_interval(hours => ${tatHours})) AS within
           FROM ticket_event e JOIN (${scoped}) s ON s.id = e.ticket_id JOIN ticket t ON t.id = e.ticket_id
          WHERE e.created_at >= ${from} AND e.created_at < ${to}
            AND e.type IN ('RESOLVED','CLOSED') ${this.actorIs(scope)}`,
@@ -300,6 +303,8 @@ export class AnalyticsEngine {
 
     return {
       range: { from: from.toISOString(), to: new Date(to.getTime() - 1).toISOString(), days: range.days, bucket },
+      /** The escalation limit in hours, so screens can name it ("2 days") instead of repeating a number. */
+      tatHours: await getTatHours(this.prisma),
       headline,
       finishTimes,
       categories: cats.map((c) => ({ id: c.id, name: c.name, count: num(c.n), previous: prevCat.get(c.id) ?? 0 })),
@@ -315,7 +320,7 @@ export class AnalyticsEngine {
       words: terms.words,
       phrases: terms.phrases,
       feedbackTerms: mentioned,
-      // Open tickets by how much of their 48h is left. Critical tickets have no clock, so they are not in here.
+      // Open tickets by how much of their time limit is left. Critical tickets have no clock, so they are not in here.
       timeLeft: {
         overdue: left('overdue'),
         within6h: left('h6'),
