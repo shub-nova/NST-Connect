@@ -23,6 +23,8 @@ export class ApiError extends Error {
 async function toError(res: Response): Promise<ApiError> {
   let message = `Request failed (${res.status})`;
   let issues: ApiError["issues"];
+  // The server's own wording for a rate limit is a developer message; people get a plain one.
+  if (res.status === 429) return new ApiError(429, "Too many attempts. Please wait a minute and try again.");
   try {
     const body = await res.json();
     if (Array.isArray(body.message)) message = body.message.join(", ");
