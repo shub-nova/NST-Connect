@@ -109,6 +109,9 @@ model User {
   emailVerifiedAt DateTime? @map("email_verified_at")
   /// Set when a staff member is removed from their last role. They can no longer log in.
   deactivatedAt   DateTime? @map("deactivated_at")
+  /// When a password-reset email was last sent. Another one is not sent for a couple of minutes, so nobody can
+  /// flood an inbox by asking again and again.
+  passwordResetSentAt DateTime? @map("password_reset_sent_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
   pocAssignments POCAssignment[]

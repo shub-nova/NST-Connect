@@ -29,11 +29,22 @@ export interface AuthResult {
   refreshToken: string;
 }
 
+/** A reset link works for an hour, and another one is not emailed within this time of the last. */
+const RESET_LINK_TTL = '1h';
+const RESET_COOLDOWN_MS = 2 * 60 * 1000;
+/**
+ * "Forgot password" always takes at least this long to answer, whether or not the address has an account, so the
+ * time it takes cannot be used to find out who is registered. (Not applied in tests.)
+ */
+const FORGOT_MIN_RESPONSE_MS = 1500;
+
 /** How long after rotation the old refresh token is still accepted (covers racing requests). */
 const REFRESH_REUSE_GRACE_MS = 10_000;
 
 const toPublic = (u: User): PublicUser => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+/** A short fingerprint of the current password. A reset link carries it, so the link stops working once the password changes. */
+const passwordFingerprint = (passwordHash: string) => sha256(passwordHash).slice(0, 24);
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -137,6 +148,64 @@ export class AuthService implements OnModuleInit {
     } catch {
       throw new BadRequestException('This verification link is invalid or has expired.');
     }
+  }
+
+  /**
+   * Emails a reset link. The answer is the same whether or not the address has an account (and takes the same time),
+   * so this cannot be used to find out who is registered. Only a verified, active account with a password gets one:
+   * someone who never finished signing up should sign up again, which sends a fresh verification email instead.
+   */
+  async forgotPassword(rawEmail: string): Promise<void> {
+    const started = Date.now();
+    const email = rawEmail.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (user?.passwordHash && user.emailVerifiedAt && !user.deactivatedAt) {
+      const recently = !!user.passwordResetSentAt && Date.now() - user.passwordResetSentAt.getTime() < RESET_COOLDOWN_MS;
+      if (!recently) {
+        await this.prisma.user.update({ where: { id: user.id }, data: { passwordResetSentAt: new Date() } });
+        const token = await this.jwt.signAsync(
+          { sub: user.id, purpose: 'reset', fp: passwordFingerprint(user.passwordHash) },
+          { expiresIn: RESET_LINK_TTL },
+        );
+        const link = `${this.config.getOrThrow<string>('WEB_URL')}/reset-password?token=${token}`;
+        await this.mail.send(
+          user.email,
+          'Reset your NST Connect password',
+          `Hi ${user.name},\n\nSomeone asked to reset the password for your NST Connect account. To choose a new one, open this link:\n${link}\n\nThe link works for 1 hour and only once. If you did not ask for this, ignore this email: your password stays the same.`,
+        );
+      }
+    }
+
+    const wait = (process.env.NODE_ENV === 'test' ? 0 : FORGOT_MIN_RESPONSE_MS) - (Date.now() - started);
+    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  }
+
+  /**
+   * Sets a new password from a reset link. The link works once: it carries a fingerprint of the old password, and
+   * the change only goes through if that is still the current one (so two uses at the same moment cannot both win).
+   * Every session of the account is ended, so whoever had the old password is signed out.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const invalid = () => new BadRequestException('This reset link is invalid or has expired. Please ask for a new one.');
+    let claims: { sub: string; purpose: string; fp: string };
+    try {
+      claims = await this.jwt.verifyAsync(token);
+    } catch {
+      throw invalid();
+    }
+    if (claims.purpose !== 'reset') throw invalid();
+
+    const user = await this.prisma.user.findUnique({ where: { id: claims.sub } });
+    if (!user?.passwordHash || user.deactivatedAt || passwordFingerprint(user.passwordHash) !== claims.fp) throw invalid();
+
+    const passwordHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    const changed = await this.prisma.user.updateMany({
+      where: { id: user.id, passwordHash: user.passwordHash },
+      data: { passwordHash, passwordResetSentAt: null },
+    });
+    if (changed.count !== 1) throw invalid();
+    await this.prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
   }
 
   async login(rawEmail: string, password: string): Promise<AuthResult> {

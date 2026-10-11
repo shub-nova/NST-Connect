@@ -20,6 +20,11 @@ const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 const verifySchema = z.object({ token: z.string().min(10).max(2000) });
+const forgotSchema = z.object({ email: z.string().trim().email().max(254) });
+const resetSchema = z.object({
+  token: z.string().min(10).max(2000),
+  password: z.string().min(10, 'Use at least 10 characters').max(128),
+});
 
 @Controller('auth')
 export class AuthController {
@@ -45,6 +50,26 @@ export class AuthController {
     const dto = parseOrThrow(verifySchema, body);
     await this.auth.verifyEmail(dto.token);
     return { message: 'Email verified. You can now log in.' };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('forgot-password')
+  @HttpCode(202)
+  async forgotPassword(@Body() body: unknown) {
+    const dto = parseOrThrow(forgotSchema, body);
+    await this.auth.forgotPassword(dto.email);
+    return { message: 'If an account exists for that address, a reset link is on its way.' };
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(@Body() body: unknown) {
+    const dto = parseOrThrow(resetSchema, body);
+    await this.auth.resetPassword(dto.token, dto.password);
+    return { message: 'Your password has been changed. Please log in.' };
   }
 
   @Public()
