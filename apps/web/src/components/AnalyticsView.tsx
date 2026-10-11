@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDownLeft, ArrowUpRight, Check, Clock, Inbox, RotateCcw, Smile, Target, Ticket, X, Zap } from "lucide-react";
-import { Children, useEffect, useState } from "react";
+import { Children, createContext, useContext, useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ApiError, api } from "@/lib/api";
 import type { AnalyticsBreakdownRow, AnalyticsData, AnalyticsHeadline } from "@/lib/types";
@@ -9,6 +9,12 @@ import { SendNote } from "./AdminNotes";
 import { ErrorNote, PillSelect, inputCls } from "./ui";
 
 // ---- formatting ----------------------------------------------------------------------------
+
+/** The escalation limit the admin has set, in words: "2 days" (and "2-day" before a noun). */
+const DEFAULT_LIMIT = { long: "2 days", adj: "2-day" };
+const describeLimit = (hours: number) =>
+  hours % 24 === 0 ? { long: `${hours / 24} day${hours === 24 ? "" : "s"}`, adj: `${hours / 24}-day` } : { long: `${hours} hours`, adj: `${hours}-hour` };
+const LimitContext = createContext(DEFAULT_LIMIT);
 
 const fmtPct = (p: number | null) => (p === null ? "—" : `${p}%`);
 
@@ -373,6 +379,7 @@ function Donut({ slices, total, idle, inline }: { slices: Slice[]; total: number
 
 /** Where each outcome comes from: a donut per outcome showing each category's share of the total. */
 function ShareDonuts({ rows, final }: { rows: AnalyticsBreakdownRow[]; final: boolean }) {
+  const limit = useContext(LimitContext);
   const colorOf = new Map(rows.map((r, i) => [r.id, SHARE_PALETTE[i % SHARE_PALETTE.length]]));
   const rated = rows
     .filter((r) => r.headline.total > 0)
@@ -387,7 +394,7 @@ function ShareDonuts({ rows, final }: { rows: AnalyticsBreakdownRow[]; final: bo
           const total = all.reduce((n, x) => n + x.value, 0);
           const slices = all.map((x) => ({ ...x, color: colorOf.get(x.id) ?? COLORS.slate }));
           return (
-            <Section key={m.key} title={final && m.key === "auto" ? "Missed the 48h limit" : m.title} basis={250}>
+            <Section key={m.key} title={final && m.key === "auto" ? `Missed the ${limit.adj} limit` : m.title} basis={250}>
               {total === 0 ? (
                 <Empty />
               ) : (
@@ -543,7 +550,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
   // The same rules apply on a person's own page and when the admin filters by a level.
   const firstLevel = (isMe && top === 1) || adminLevel === 1;
   const finalLevel = (isMe && top === 3) || adminLevel === 3;
-  const showWithin48 = isMe ? top === 1 : !adminLevel || adminLevel === 1;
+  const showWithinLimit = isMe ? top === 1 : !adminLevel || adminLevel === 1;
   // The admin donuts break the cards' totals down by category, so the per-category list is not repeated.
   const showShares = isAdmin && (data?.breakdown?.length ?? 0) > 1;
   // What is being raised describes a whole category, so it is hidden once the admin narrows to a level.
@@ -566,8 +573,10 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
 
   const phrases = data ? (data.phrases.length >= 3 ? data.phrases : data.words) : [];
   const phrasesTitle = data && data.phrases.length >= 3 ? "Most repeated phrases" : "Most repeated words";
+  const limit = data ? describeLimit(data.tatHours) : DEFAULT_LIMIT;
 
   return (
+    <LimitContext.Provider value={limit}>
     <div className="space-y-5 sm:space-y-6">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2.5">
@@ -634,13 +643,13 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
                 <Kpi
                   icon="bolt"
                   accent="red"
-                  label={finalLevel ? "Missed the 48h limit" : isMe ? "Auto-escalated from me" : "Auto-escalated"}
+                  label={finalLevel ? `Missed the ${limit.adj} limit` : isMe ? "Auto-escalated from me" : "Auto-escalated"}
                   value={String(h.autoEscalatedFrom)}
                   bad={h.autoEscalatedFrom > 0}
                 />
                 {isMe && !firstLevel && <Kpi icon="down" accent="blue" label="Auto-escalated to me" value={String(h.autoEscalatedTo)} />}
-                {showWithin48 && (
-                  <Kpi icon="target" accent="green" label="Finished within 48h" value={fmtPct(h.withinTatPct)} />
+                {showWithinLimit && (
+                  <Kpi icon="target" accent="green" label={`Finished within ${limit.long}`} value={fmtPct(h.withinTatPct)} />
                 )}
                 {!finalLevel && <Kpi icon="rotate" accent="violet" label="Reopened" value={fmtPct(h.reopenRatePct)} />}
                 <Kpi icon="smile" accent="green" label="Satisfaction" value={fmtPct(h.feedback.satisfactionPct)} />
@@ -651,7 +660,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               <h2 className="text-lg font-semibold text-ink">Analytics</h2>
               <Row>
                 {!finalLevel && (
-                  <Section title="Escalations" hint="Automatic: nobody acted within 48h. Manual: a POC chose to escalate.">
+                  <Section title="Escalations" hint={`Automatic: nobody acted within ${limit.long}. Manual: a POC chose to escalate.`}>
                     {data.trend.some((p) => p.autoEscalated || p.manualEscalated) ? (
                       <>
                         <Legend items={[{ label: "Manual", color: COLORS.amber }, { label: "Automatic (TAT)", color: COLORS.red }]} />
@@ -709,7 +718,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               </div>
 
               {data.view !== "admin" && (
-                <Section title="Time left on open tickets" hint="How much of the 48h is left. Critical tickets have no clock.">
+                <Section title="Time left on open tickets" hint={`How much of the ${limit.long} is left. Critical tickets have no clock.`}>
                   <StackedBar
                     segments={[
                       { label: "Under 6 hours", value: data.timeLeft.within6h, color: "#f97316" },
@@ -829,7 +838,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               <ul className="mt-3 list-disc space-y-1.5 pl-5">
                 <li><b>How long tickets took</b>: days from when the student raised the ticket until a POC marked it Solved or Closed, rounded up. Only finished tickets count.</li>
                 <li><b>Action needed / total</b>: open tickets waiting on the POC, out of all tickets they were involved with in the period.</li>
-                <li><b>Auto-escalated</b>: the POC did not act within 48h, so the system moved the ticket up. &quot;From me&quot; means I held it; &quot;to me&quot; means I inherited it.</li>
+                <li><b>Auto-escalated</b>: the POC did not act within {limit.long}, so the system moved the ticket up. &quot;From me&quot; means I held it; &quot;to me&quot; means I inherited it.</li>
                 <li><b>Solved / Closed / Escalated</b>: outcomes the POC chose themselves in the period.</li>
               </ul>
             </details>
@@ -837,5 +846,6 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
         </div>
       )}
     </div>
+    </LimitContext.Provider>
   );
 }

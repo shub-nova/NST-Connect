@@ -126,7 +126,7 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
 
       {ticket.critical && !resolved && (
         <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[15px] text-red-800 sm:px-5">
-          <strong>Critical.</strong> Nobody has acted on this ticket for 48 hours at any level. Please reply or finish it now.
+          <strong>Critical.</strong> Nobody has acted on this ticket within the time limit at any level. Please reply or finish it now.
         </p>
       )}
 

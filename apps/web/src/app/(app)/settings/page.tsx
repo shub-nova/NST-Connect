@@ -3,6 +3,7 @@
 import { Ellipsis } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import EscalationTime from "@/components/EscalationTime";
 import { AddDialog, EditDialog, LeaveDialog, RemoveDialog } from "@/components/StaffDialogs";
 import { Avatar, btnCls, cardCls, ErrorNote, PillSelect, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
@@ -132,6 +133,8 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight text-ink sm:text-3xl">Settings</h1>
         <p className="mt-1 text-sm text-muted">Add, change and remove the POCs below you.</p>
       </div>
+
+      {user?.role === "SUPER_ADMIN" && <EscalationTime />}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-[15px] font-semibold text-ink">Your team</h2>
