@@ -21,6 +21,29 @@ function Chevron() {
   return <ChevronDown className="h-4 w-4 text-ink" strokeWidth={2} aria-hidden="true" />;
 }
 
+/** The top bar and a few placeholder blocks, shown for the moment it takes to confirm the login. */
+function ShellSkeleton() {
+  return (
+    <div className="min-h-screen bg-white" role="status" aria-label="Loading">
+      <header className="border-b border-line">
+        <div className="flex h-16 items-center justify-between px-4 sm:h-[68px] sm:px-6">
+          <div className="flex items-center gap-2.5 text-[15px] font-semibold text-ink">
+            <LogoMark />
+            <span className="hidden sm:inline">NST Connect</span>
+          </div>
+          <div className="h-9 w-9 animate-pulse rounded-full bg-surface" />
+        </div>
+      </header>
+      <div className="mx-auto max-w-5xl animate-pulse space-y-4 px-4 py-8 sm:px-6">
+        <div className="h-8 w-56 rounded-lg bg-surface" />
+        <div className="h-4 w-80 max-w-full rounded bg-surface" />
+        <div className="h-40 rounded-xl bg-surface" />
+        <div className="h-40 rounded-xl bg-surface" />
+      </div>
+    </div>
+  );
+}
+
 /** Wraps every logged-in page: redirects visitors to /login and renders the top bar. */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, status, logout } = useAuth();
@@ -73,9 +96,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => document.removeEventListener("mousedown", close);
   }, [menuOpen]);
 
-  if (status !== "authed" || !user) {
-    return <p className="p-10 text-sm text-muted">Loading…</p>;
-  }
+  // While the session is being restored, draw the page frame at once instead of a blank screen.
+  if (status !== "authed" || !user) return <ShellSkeleton />;
 
   const home = user.role === "POC" ? "/poc" : user.role === "SUPER_ADMIN" ? "/admin" : "/new";
   const links =
