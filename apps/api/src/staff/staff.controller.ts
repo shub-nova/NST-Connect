@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser, Roles } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
@@ -42,13 +42,6 @@ export class StaffController {
   @Get('audit')
   audit(@CurrentUser() user: AuthUser) {
     return this.staff.audit(user);
-  }
-
-  /** Any POC (including L1) can put themselves on leave. */
-  @Put('me/leave')
-  @Roles(Role.POC)
-  myLeave(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    return this.staff.setMyLeave(user.id, parseOrThrow(leaveSchema, body));
   }
 
   @Post()

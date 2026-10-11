@@ -251,7 +251,6 @@ export class StaffService {
       await tx.pOCAssignment.update({ where: { id: a.id }, data: { onLeave, onLeaveUntil: returnOn } });
       // The assignment is flagged first, so the person is already out of the pool when tickets are handed over.
       if (onLeave && !a.onLeave) moved = await handOffOpenTickets(tx, a, actor.id, 'The previous owner is on leave');
-      const self = actor.id === a.userId;
       await tx.staffAudit.create({
         data: {
           actorId: actor.id,
@@ -259,7 +258,7 @@ export class StaffService {
           targetUserId: a.userId,
           categoryId: a.categoryId,
           summary: onLeave
-            ? `${self ? a.user.name : `${a.user.name} (set by a manager)`} went on leave${returnOn ? ` until ${until}` : ''}: ${moved.reassigned} ticket(s) reassigned, ${moved.escalated} escalated${moved.stranded ? `, ${moved.stranded} left with no one on duty` : ''}`
+            ? `${a.user.name} was put on leave${returnOn ? ` until ${until}` : ''}: ${moved.reassigned} ticket(s) reassigned, ${moved.escalated} escalated${moved.stranded ? `, ${moved.stranded} left with no one on duty` : ''}`
             : `${a.user.name} is back from leave`,
         },
       });
@@ -267,28 +266,14 @@ export class StaffService {
     return { onLeave, onLeaveUntil: returnOn, moved };
   }
 
+  /**
+   * Nobody puts themselves on leave. It is set by the person's manager: an L1 by their L2 or an L3 above them, an
+   * L2 by their L3, and an L3 by the Super Admin (who has no leave of their own). Someone outside the caller's
+   * reach, including the caller themselves, is a 404.
+   */
   async setLeave(actor: Actor, id: string, input: { onLeave: boolean; until?: string }) {
-    // A POC may always change their own leave; a manager may change their reports'.
-    const own = await this.prisma.pOCAssignment.findFirst({ where: { id, userId: actor.id, ...this.live() }, include });
-    const target = own ?? (await this.inReach(actor, id));
+    const target = await this.inReach(actor, id);
     return this.applyLeave(actor, target, input.onLeave, input.until);
-  }
-
-  /** Self-service from the account menu: applies to all of the person's roles. */
-  async setMyLeave(userId: string, input: { onLeave: boolean; until?: string }) {
-    const mine = await this.prisma.pOCAssignment.findMany({ where: { userId, ...this.live() }, include });
-    if (!mine.length) throw new ForbiddenException('You are not assigned to any category.');
-    const actor: Actor = { id: userId, role: 'POC' };
-    const results = [];
-    for (const a of mine) results.push(await this.applyLeave(actor, a, input.onLeave, input.until));
-    return {
-      onLeave: input.onLeave,
-      onLeaveUntil: results[0].onLeaveUntil,
-      moved: results.reduce(
-        (sum, r) => ({ reassigned: sum.reassigned + r.moved.reassigned, escalated: sum.escalated + r.moved.escalated, stranded: sum.stranded + r.moved.stranded }),
-        { reassigned: 0, escalated: 0, stranded: 0 },
-      ),
-    };
   }
 
   // ---- removing ---------------------------------------------------------------------------

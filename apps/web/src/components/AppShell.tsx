@@ -9,7 +9,6 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { AnalyticsAccess } from "@/lib/types";
 import { NOTES_CHANGED, NotesBell, SentNotesBell } from "./AdminNotes";
-import { LeaveDialog } from "./StaffDialogs";
 import { Avatar } from "./ui";
 
 /** The Newton School logo mark. */
@@ -57,7 +56,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const isPocArea = pathname.startsWith("/poc");
   const isAdminArea = pathname.startsWith("/admin");
   const [access, setAccess] = useState<AnalyticsAccess | null>(null);
-  const [leaveOpen, setLeaveOpen] = useState(false);
 
   useEffect(() => {
     if (status === "anon") router.replace("/login");
@@ -176,19 +174,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     Settings
                   </Link>
                 )}
-                {role === "POC" && (
-                  <button
+                {role === "SUPER_ADMIN" && (
+                  <Link
+                    href="/admin/categories"
                     role="menuitem"
-                    className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface"
-                    onClick={async () => {
-                      setMenuOpen(false);
-                      if (!access?.onLeave) return setLeaveOpen(true);
-                      await api("/staff/me/leave", { method: "PUT", body: { onLeave: false } }).catch(() => {});
-                      window.dispatchEvent(new Event(NOTES_CHANGED)); // refreshes the menu state
-                    }}
+                    onClick={() => setMenuOpen(false)}
+                    className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface"
                   >
-                    {access?.onLeave ? "I’m back from leave" : "Go on leave"}
-                  </button>
+                    Categories
+                  </Link>
                 )}
                 <button
                   role="menuitem"
@@ -209,16 +203,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-5 sm:py-8">{children}</main>
 
-      {leaveOpen && (
-        <LeaveDialog
-          onClose={() => setLeaveOpen(false)}
-          onConfirm={async (until) => {
-            await api("/staff/me/leave", { method: "PUT", body: { onLeave: true, until } });
-            setLeaveOpen(false);
-            window.dispatchEvent(new Event(NOTES_CHANGED)); // refreshes the menu state
-          }}
-        />
-      )}
     </div>
   );
 }

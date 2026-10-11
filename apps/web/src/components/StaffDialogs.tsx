@@ -25,15 +25,15 @@ function Actions({ onClose, busy, label, danger }: { onClose: () => void; busy: 
   );
 }
 
-// ---- leave: for yourself (account menu) or for someone you manage -----------------------------
+// ---- leave: set by a manager for the person below them (nobody sets their own) ------------------
 
 export function LeaveDialog({
   who,
   onConfirm,
   onClose,
 }: {
-  /** The person's name when a manager does it for them; omit for "me". */
-  who?: string;
+  /** The name of the person being put on leave. */
+  who: string;
   onConfirm: (until: string) => Promise<HandoffSummary | void>;
   onClose: () => void;
 }) {
@@ -55,18 +55,18 @@ export function LeaveDialog({
   }
 
   return (
-    <Modal title={who ? `Put ${who} on leave` : "Go on leave"} onClose={onClose}>
+    <Modal title={`Put ${who} on leave`} onClose={onClose}>
       <form onSubmit={submit}>
         <p className="text-sm text-muted">
-          {who ? "Their" : "Your"} open tickets are handed to a colleague at the same level, or escalated if nobody else is available. New tickets skip {who ? "them" : "you"} until {who ? "they are" : "you are"} back.
+          Their open tickets are handed to a colleague at the same level, or escalated if nobody else is available. New tickets skip them until they are back.
         </p>
         <div className="mt-4">
-          <Field label="Back on" hint="Leave ends by itself on this date, and you are back in rotation.">
+          <Field label="Back on" hint="Leave ends by itself on this date, and they are back in rotation.">
             <input id="leave-until" type="date" required min={tomorrow} value={until} onChange={(e) => setUntil(e.target.value)} className={fieldCls} />
           </Field>
         </div>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Go on leave" />
+        <Actions onClose={onClose} busy={busy} label="Put on leave" />
       </form>
     </Modal>
   );

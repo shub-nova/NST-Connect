@@ -151,7 +151,8 @@ describe('Settings: managing POCs, and leave (e2e)', () => {
     ticketsOfL1 = (await Promise.all(ids.map(row))).filter((t) => t.assignedPocId === l1Id).map((t) => t.id);
     expect(ticketsOfL1.length).toBeGreaterThan(0); // balanced between the two L1s
 
-    const res = await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: true, until: backOn }).expect(200);
+    const l1Assignment = await assignmentOf('activities.l1.1@newtonschool.co');
+    const res = await post(`/staff/${l1Assignment.id}/leave`, l2, { onLeave: true, until: backOn }).expect(200); // the L2 above sets it
     expect(res.body.moved).toMatchObject({ reassigned: ticketsOfL1.length, escalated: 0, stranded: 0 });
 
     for (const id of ticketsOfL1) {
@@ -187,20 +188,45 @@ describe('Settings: managing POCs, and leave (e2e)', () => {
   });
 
   it('puts returning POCs back in rotation for new tickets', async () => {
-    await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: false }).expect(200);
+    await post(`/staff/${(await assignmentOf('activities.l1.1@newtonschool.co')).id}/leave`, l2, { onLeave: false }).expect(200);
     const l1Id = await userIdOf('activities.l1.1@newtonschool.co');
     const next = await newTicket('Back in rotation');
     expect(await row(next)).toMatchObject({ currentLevel: 1, assignedPocId: l1Id });
     expect((await get('/analytics/access', l1).expect(200)).body).toMatchObject({ onLeave: false, manage: false });
   });
 
+  it('lets nobody put themselves on leave: only the level above can', async () => {
+    const l1A = await assignmentOf('activities.l1.1@newtonschool.co');
+    const l2A = await assignmentOf('activities.l2@newtonschool.co');
+    const l3A = await assignmentOf('activities.l3@newtonschool.co');
+    const until = backOn;
+
+    // No self-service: the old route is gone, and nobody can change their own assignment or a level above theirs.
+    await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: true, until }).expect(404);
+    await post(`/staff/${l1A.id}/leave`, l1, { onLeave: true, until }).expect(403); // L1 has no Settings at all
+    await post(`/staff/${l2A.id}/leave`, l1, { onLeave: true, until }).expect(403);
+    await post(`/staff/${l2A.id}/leave`, l2, { onLeave: true, until }).expect(404); // not their own
+    await post(`/staff/${l3A.id}/leave`, l3, { onLeave: true, until }).expect(404);
+    await post(`/staff/${l3A.id}/leave`, l2, { onLeave: true, until }).expect(404); // and not the level above them
+    await post(`/staff/${l1A.id}/leave`, feesL2, { onLeave: true, until }).expect(404); // another category's L2
+    expect(await prisma().pOCAssignment.count({ where: { id: { in: [l1A.id, l2A.id, l3A.id] }, onLeave: true } })).toBe(0);
+
+    // The level above can: L3 sets L2's leave, and the Super Admin sets L3's. The admin has no leave of their own.
+    await post(`/staff/${l2A.id}/leave`, l3, { onLeave: true, until }).expect(200);
+    await post(`/staff/${l2A.id}/leave`, l3, { onLeave: false }).expect(200);
+    await post(`/staff/${l3A.id}/leave`, admin, { onLeave: true, until }).expect(200);
+    expect((await get('/analytics/access', l3).expect(200)).body).toMatchObject({ onLeave: true });
+    await post(`/staff/${l3A.id}/leave`, admin, { onLeave: false }).expect(200);
+    expect((await get('/analytics/access', l3).expect(200)).body).toMatchObject({ onLeave: false });
+  });
+
   it('ends leave by itself on the return date', async () => {
     const until = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
-    await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: true, until }).expect(200);
+    const l1Id = (await assignmentOf('activities.l1.1@newtonschool.co')).id;
+    await post(`/staff/${l1Id}/leave`, l3, { onLeave: true, until }).expect(200); // an L3 reaches the L1s under their L2
     expect((await get('/analytics/access', l1).expect(200)).body).toMatchObject({ onLeave: true });
-    await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: true, until: '2020-01-01' }).expect(400); // past date
-    await request(server()).put('/staff/me/leave').set(auth(l1)).send({ onLeave: true }).expect(400); // a return date is required
-    await post(`/staff/${(await assignmentOf('activities.l1.1@newtonschool.co')).id}/leave`, l2, { onLeave: true }).expect(400);
+    await post(`/staff/${l1Id}/leave`, l2, { onLeave: true, until: '2020-01-01' }).expect(400); // past date
+    await post(`/staff/${l1Id}/leave`, l2, { onLeave: true }).expect(400); // a return date is required
 
     const mine = await assignmentOf('activities.l1.1@newtonschool.co');
     await prisma().pOCAssignment.update({ where: { id: mine.id }, data: { onLeaveUntil: new Date(Date.now() - 1000) } });
