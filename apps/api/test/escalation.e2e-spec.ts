@@ -111,7 +111,7 @@ describe('Automatic escalation (e2e)', () => {
     const detail = await request(server()).get(`/poc/tickets/${ticketId}`).set(auth(l2Token)).expect(200);
     const labels = detail.body.thread.map((i: { label?: string }) => i.label);
     expect(labels).toContain('Missed the time limit');
-    expect(labels).toContain('Escalated to level 2: no action within the time limit');
+    expect(labels).toContain('Escalated to level 2: not solved within the time limit');
     const queue = await request(server()).get('/poc/queue').set(auth(l2Token)).expect(200);
     expect(queue.body.tickets.map((t: { id: string }) => t.id)).toContain(ticketId);
   });
@@ -126,27 +126,52 @@ describe('Automatic escalation (e2e)', () => {
     expect(await events(ticketId, 'TAT_BREACHED')).toHaveLength(1);
   });
 
-  it('a POC acting (reply or mark in progress) restarts the clock, so nothing escalates', async () => {
+  it('replying or marking in progress does not buy more time: only solving does', async () => {
     const replied = await newTicket();
     const marked = await newTicket();
+    const solved = await newTicket();
     const l1Token = await loginAsPoc(app, L1);
     await makeOverdue(replied);
     await makeOverdue(marked);
+    await makeOverdue(solved);
 
     // The POC acts just before the job runs.
     await request(server()).post(`/poc/tickets/${replied}/comments`).set(auth(l1Token)).send({ body: 'On it.' }).expect(201);
     await request(server()).post(`/poc/tickets/${marked}/status`).set(auth(l1Token)).send({ status: 'IN_PROGRESS' }).expect(200);
+    await request(server()).post(`/poc/tickets/${solved}/close`).set(auth(l1Token)).send({ outcome: 'SOLVED', note: 'All sorted out.' }).expect(200);
 
-    await job.runOnce();
+    const result = await job.runOnce();
+    expect(result.escalated).toBeGreaterThanOrEqual(2);
     for (const id of [replied, marked]) {
-      expect(await row(id)).toMatchObject({ status: 'IN_PROGRESS', currentLevel: 1 });
-      expect(await events(id, 'ESCALATED')).toHaveLength(0);
+      expect(await row(id)).toMatchObject({ status: 'ESCALATED', currentLevel: 2 }); // the deadline had passed and a reply did not move it
+      expect(await events(id, 'ESCALATED')).toHaveLength(1);
     }
+    expect(await row(solved)).toMatchObject({ status: 'RESOLVED', currentLevel: 1 }); // solved in time
+    expect(await events(solved, 'ESCALATED')).toHaveLength(0);
+  });
 
-    // Silence after that does escalate: the limit is 48h of inaction, not 48h in total.
-    await makeOverdue(replied);
-    await job.runOnce();
-    expect(await row(replied)).toMatchObject({ status: 'ESCALATED', currentLevel: 2 });
+  it('leaves the deadline and the warning alone when a POC replies', async () => {
+    const id = await newTicket();
+    const l1Token = await loginAsPoc(app, L1);
+    await setHoursLeft(id, 6);
+    await job.runOnce(); // sends the 12h warning
+    const before = await row(id);
+    expect(before.tatWarnedAt).not.toBeNull();
+
+    await request(server()).post(`/poc/tickets/${id}/comments`).set(auth(l1Token)).send({ body: 'Looking into it.' }).expect(201);
+    const after = await row(id);
+    expect(after.tatDeadline!.getTime()).toBe(before.tatDeadline!.getTime());
+    expect(after.tatWarnedAt!.getTime()).toBe(before.tatWarnedAt!.getTime());
+  });
+
+  it('escalating by hand gives the next level a full clock', async () => {
+    const id = await newTicket();
+    const l1Token = await loginAsPoc(app, L1);
+    await setHoursLeft(id, 3);
+    await request(server()).post(`/poc/tickets/${id}/close`).set(auth(l1Token)).send({ outcome: 'ESCALATED', note: 'Needs the lead.' }).expect(200);
+    const t = await row(id);
+    expect(t).toMatchObject({ currentLevel: 2, status: 'ESCALATED', tatWarnedAt: null });
+    expect((t.tatDeadline!.getTime() - Date.now()) / HOUR).toBeGreaterThan(47.9);
   });
 
   it('walks up L1 → L2 → L3, then flags the ticket critical and tells the admins (once)', async () => {
@@ -176,12 +201,12 @@ describe('Automatic escalation (e2e)', () => {
     await job.runOnce();
     expect(await events(ticketId, 'TAT_BREACHED')).toHaveLength(3);
 
-    // When L3 acts, the flag clears and the 48h clock restarts.
+    // A reply from L3 does not clear the flag or restart anything; solving the ticket does.
     const l3Token = await loginAsPoc(app, L3);
     await request(server()).post(`/poc/tickets/${ticketId}/comments`).set(auth(l3Token)).send({ body: 'Sorry for the delay, looking now.' }).expect(201);
-    const after = await row(ticketId);
-    expect(after.critical).toBe(false);
-    expect((after.tatDeadline!.getTime() - Date.now()) / HOUR).toBeGreaterThan(47.9);
+    expect(await row(ticketId)).toMatchObject({ critical: true, tatDeadline: null });
+    await request(server()).post(`/poc/tickets/${ticketId}/close`).set(auth(l3Token)).send({ outcome: 'SOLVED', note: 'Fixed.' }).expect(200);
+    expect(await row(ticketId)).toMatchObject({ critical: false, status: 'RESOLVED', tatDeadline: null });
   });
 
   it('skips a level with nobody on duty; with nobody above at all it flags critical', async () => {
@@ -230,13 +255,19 @@ describe('Automatic escalation (e2e)', () => {
     await job.runOnce(); // no duplicate
     expect(await prisma().notification.count({ where: { ticketId: soon, type: 'TAT_WARNING' } })).toBe(1);
 
-    // Acting restarts the clock and re-arms the warning for the next deadline.
+    // A reply changes nothing: the same deadline, so no second warning.
     const l1Token = await loginAsPoc(app, L1);
     await request(server()).post(`/poc/tickets/${soon}/comments`).set(auth(l1Token)).send({ body: 'Working on it.' }).expect(201);
+    expect((await row(soon)).tatWarnedAt).not.toBeNull();
+    await job.runOnce();
+    expect(await prisma().notification.count({ where: { ticketId: soon, userId: l1, type: 'TAT_WARNING' } })).toBe(1);
+
+    // A fresh deadline (here from a hand-over to the next level) re-arms the warning.
+    await request(server()).post(`/poc/tickets/${soon}/close`).set(auth(l1Token)).send({ outcome: 'ESCALATED', note: 'Needs the lead.' }).expect(200);
     expect((await row(soon)).tatWarnedAt).toBeNull();
     await setHoursLeft(soon, 5);
     await job.runOnce();
-    expect(await prisma().notification.count({ where: { ticketId: soon, userId: l1, type: 'TAT_WARNING' } })).toBe(2);
+    expect(await prisma().notification.count({ where: { ticketId: soon, type: 'TAT_WARNING' } })).toBe(2);
   });
 
   it('two runs at the same moment: a ticket is escalated exactly once', async () => {

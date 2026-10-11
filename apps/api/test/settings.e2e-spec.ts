@@ -54,6 +54,14 @@ describe('Escalation time set by the admin (e2e)', () => {
     expect((await get('/settings/escalation', admin).expect(200)).body.days).toBe(2);
   });
 
+  it('shows when the escalation check last ran', async () => {
+    await prismaOf(app).jobHeartbeat.deleteMany();
+    expect((await get('/settings/escalation', admin).expect(200)).body.lastRunAt).toBeNull();
+    await app.get(EscalationService).runOnce();
+    const { lastRunAt } = (await get('/settings/escalation', admin).expect(200)).body;
+    expect(Date.now() - new Date(lastRunAt).getTime()).toBeLessThan(60_000);
+  });
+
   it('uses the new limit for tickets from then on, and leaves current deadlines alone', async () => {
     const before = await newTicket('Raised under the 2 day limit');
     expect(hoursFromNow((await row(before)).tatDeadline)).toBeCloseTo(48, 0);
@@ -67,10 +75,13 @@ describe('Escalation time set by the admin (e2e)', () => {
     expect(hoursFromNow((await row(after)).tatDeadline)).toBeCloseTo(72, 0);
   });
 
-  it('restarts a ticket\'s clock with the new limit when a POC acts', async () => {
-    const id = await newTicket('Reply restarts the clock');
+  it('does not restart a ticket\'s clock when a POC replies, but a hand-over gives the next level the new limit', async () => {
+    const id = await newTicket('Reply does not restart the clock');
     await prismaOf(app).ticket.update({ where: { id }, data: { tatDeadline: new Date(Date.now() + 5 * HOUR) } });
     await post(`/poc/tickets/${id}/comments`, pocL1, { body: 'Looking into it now.' }).expect(201);
+    expect(hoursFromNow((await row(id)).tatDeadline)).toBeCloseTo(5, 0);
+
+    await post(`/poc/tickets/${id}/close`, pocL1, { outcome: 'ESCALATED', note: 'Needs the lead.' }).expect(200);
     expect(hoursFromNow((await row(id)).tatDeadline)).toBeCloseTo(72, 0);
   });
 

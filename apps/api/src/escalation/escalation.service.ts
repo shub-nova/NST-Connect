@@ -6,7 +6,7 @@ import { pickLeastLoadedOwner } from '../tickets/routing';
 import { deadlineAfter, getTatHours } from '../settings/tat';
 
 export interface EscalationRunResult {
-  /** Tickets moved up a level because the assigned POC did nothing within the time limit. */
+  /** Tickets moved up a level because they were not solved within the time limit. */
   escalated: number;
   /** Tickets with nowhere higher to go: flagged critical instead. */
   flaggedCritical: number;
@@ -19,11 +19,11 @@ const OPEN: TicketStatus[] = ['ASSIGNED', 'IN_PROGRESS', 'ESCALATED', 'REOPENED'
 const MAX_TICKETS_PER_RUN = 500;
 
 /**
- * Automatic escalation. Every POC action (reply, mark in progress, solve, close, escalate)
- * restarts the ticket's clock, so a ticket whose deadline has passed is exactly one where
- * its assigned POC did nothing within the limit (48 hours unless the admin changed it). This job moves such tickets up one level (to the
- * next level that has someone on duty), logs the miss against the POC who ignored it, and
- * warns the POC beforehand.
+ * Automatic escalation. A ticket's deadline is set when it reaches a level (a new ticket, a reopen, an
+ * escalation, a hand-over) and only solving or closing the ticket stops it: replying or marking it in progress
+ * does not restart it. So a ticket whose deadline has passed is one that was not solved in time (the time limit is
+ * 2 days unless the admin changed it). This job moves such tickets up one level (to the next level that has
+ * someone on duty), logs the miss against the POC who held it, and warns the POC beforehand.
  *
  * It is safe to run at any time and from several processes at once:
  *  - each ticket is claimed with FOR UPDATE SKIP LOCKED, so two runs never take the same one;
@@ -177,7 +177,7 @@ export class EscalationService {
 
   /**
    * Nowhere higher to go. Flag it, tell the admins, and stop the clock so the next run does
-   * not log the same miss again. When a POC acts, the clock restarts and the flag clears.
+   * not log the same miss again. It stays critical until a POC solves or closes it.
    */
   private async flagCritical(tx: Prisma.TransactionClient, ticketId: string) {
     const admins = await tx.user.findMany({ where: { role: 'SUPER_ADMIN' }, select: { id: true } });

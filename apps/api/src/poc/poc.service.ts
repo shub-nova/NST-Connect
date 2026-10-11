@@ -171,7 +171,7 @@ export class PocService {
           e.type === 'STATUS_CHANGED' && e.toStatus
             ? `Marked ${STATUS_LABELS[e.toStatus].toLowerCase()}`
             : e.type === 'ESCALATED' && e.toLevel
-              ? `Escalated to level ${e.toLevel}${e.reason === 'TAT_BREACH' ? ': no action within the time limit' : e.reason === 'ON_LEAVE' ? ': owner on leave' : ''}`
+              ? `Escalated to level ${e.toLevel}${e.reason === 'TAT_BREACH' ? ': not solved within the time limit' : e.reason === 'ON_LEAVE' ? ': owner on leave' : ''}`
               : (POC_EVENT_LABELS[e.type] ?? 'Updated'),
         note: e.type === 'RESOLVED' || e.type === 'CLOSED' || e.type === 'ESCALATED' || e.type === 'REASSIGNED' || e.type === 'RENAMED' ? e.note : null,
         at: e.createdAt,
@@ -281,7 +281,7 @@ export class PocService {
         },
       });
       await tx.notification.create({ data: { userId: t.studentId, type: 'RESOLVED', ticketId } });
-      return { status, resolvedAt: new Date(), resolvedLevel: t.currentLevel, tatDeadline: null };
+      return { status, resolvedAt: new Date(), resolvedLevel: t.currentLevel, tatDeadline: null, tatWarnedAt: null, critical: false };
     });
   }
 
@@ -340,7 +340,15 @@ export class PocService {
         { userId: owner.userId, type: 'ESCALATION', ticketId: t.id },
       ],
     });
-    return { status: 'ESCALATED', currentLevel: nextLevel, assignedPocId: owner.userId };
+    // The next level starts with a full clock, using the limit the admin has set.
+    return {
+      status: 'ESCALATED',
+      currentLevel: nextLevel,
+      assignedPocId: owner.userId,
+      tatDeadline: deadlineAfter(new Date(), await getTatHours(tx)),
+      tatWarnedAt: null,
+      critical: false,
+    };
   }
 
   private async markInProgress(
@@ -369,8 +377,12 @@ export class PocService {
   /**
    * The one place a POC changes a ticket. In ONE transaction it: locks the ticket, checks
    * the POC may work on it, refuses resolved tickets, runs the action (which writes its
-   * own events and notifications), then claims the ticket for this POC and restarts the
-   * 48-hour clock. A concurrent second action waits for the lock instead of racing.
+   * own events and notifications), then claims the ticket for this POC. A concurrent second action
+   * waits for the lock instead of racing.
+   *
+   * The ticket's deadline is NOT touched here: a reply or "in progress" does not buy more time, so the only
+   * way to stay inside the limit is to solve or close the ticket. An action that changes the clock says so in
+   * the changes it returns (escalating gives the next level a fresh one, finishing stops it).
    */
   private async act(
     pocId: string,
@@ -395,16 +407,7 @@ export class PocService {
       const changes = await action(tx, t);
       await tx.ticket.update({
         where: { id: ticketId },
-        data: {
-          assignedPocId: pocId,
-          // Every POC action restarts the clock for the current level, using the limit the admin has set.
-          tatDeadline: deadlineAfter(new Date(), await getTatHours(tx)),
-          // A POC acting restarts the clock: the warning can be sent again, and a ticket that
-          // was flagged critical because nobody acted is no longer ignored.
-          tatWarnedAt: null,
-          critical: false,
-          ...changes,
-        },
+        data: { assignedPocId: pocId, ...changes },
       });
     });
   }

@@ -178,8 +178,8 @@ export class TicketsService {
   /**
    * The student is not satisfied with a Solved or Closed ticket: reopen the same ticket with
    * a comment. It goes back to the level that finished it (or the next level up if nobody is on
-   * duty there), the student's comment becomes part of the conversation, and the 48-hour clock
-   * restarts. All of it happens in one transaction, and the ticket row is locked so two
+   * duty there), the student's comment becomes part of the conversation, and a fresh clock
+   * starts. All of it happens in one transaction, and the ticket row is locked so two
    * simultaneous reopens cannot both succeed.
    */
   async reopen(studentId: string, ticketId: string, comment: string): Promise<StudentTicketDetail> {
