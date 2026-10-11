@@ -5,7 +5,7 @@ import { Public } from '../common/decorators';
 import { EscalationService } from './escalation.service';
 
 /**
- * Lets an external scheduler (GitHub Actions, Render cron) trigger the check. It is not part
+ * Lets an external scheduler (cron-job.org, Render cron) trigger the check. It is not part
  * of the user-facing API: it is off unless JOB_SECRET is set, and needs it in a header.
  */
 @Controller('internal/escalation')

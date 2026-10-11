@@ -26,11 +26,11 @@ const schema = z.object({
   /** True for implicit TLS (port 465). Port 587 uses STARTTLS automatically. */
   SMTP_SECURE: z.stringbool().default(false),
 
-  // Automatic escalation: a ticket whose assigned POC does nothing for 48h moves up a level.
+  // Automatic escalation: a ticket that is not solved within the time limit (set by the admin, 2 days by default) moves up a level.
   ESCALATION_JOB_ENABLED: z.stringbool().default(true),
   ESCALATION_INTERVAL_MINUTES: z.coerce.number().int().min(1).default(15),
   TAT_WARNING_HOURS: z.coerce.number().int().min(1).default(12),
-  /** Lets a scheduler (GitHub Actions, Render cron) call POST /internal/escalation/run. Unset = endpoint off. */
+  /** Lets a scheduler (cron-job.org, Render cron) call POST /internal/escalation/run. Unset = endpoint off. */
   JOB_SECRET: z.string().min(16, 'JOB_SECRET must be at least 16 characters').optional(),
 
   /** Database connections per instance. Keep it at 1 or 2 on serverless (Vercel), where there are many instances. */
