@@ -12,7 +12,7 @@ import { ErrorNote } from "./ui";
 
 type Mode = "login" | "signup";
 
-const fieldCls =
+export const fieldCls =
   "w-full rounded-lg border border-line bg-white px-4 py-3 text-base text-ink placeholder:text-muted/60 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand-soft";
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -43,7 +43,7 @@ function TopBar({ mode }: { mode: Mode }) {
   );
 }
 
-function PasswordInput({
+export function PasswordInput({
   value,
   onChange,
   placeholder,
@@ -84,7 +84,9 @@ function PasswordInput({
 function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
-  const verified = useSearchParams().get("verified") === "1";
+  const params = useSearchParams();
+  const verified = params.get("verified") === "1";
+  const passwordChanged = params.get("reset") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +113,11 @@ function LoginForm() {
           Email verified. Log in to continue.
         </p>
       )}
+      {passwordChanged && (
+        <p className="rounded-lg border border-green-200 bg-green-50 px-3.5 py-2.5 text-sm text-green-700">
+          Password changed. Log in with your new password.
+        </p>
+      )}
       <ErrorNote message={error} />
       <label className="block">
         <Label>Email</Label>
@@ -119,6 +126,9 @@ function LoginForm() {
       <label className="block">
         <Label>Password</Label>
         <PasswordInput value={password} onChange={setPassword} placeholder="Enter your password" autoComplete="current-password" />
+        <Link href="/forgot-password" className="mt-2 block text-right text-sm font-medium text-brand hover:underline">
+          Forgot password?
+        </Link>
       </label>
       <div className="flex justify-center pt-1">
         <button
