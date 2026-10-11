@@ -128,12 +128,21 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
    ```bash
    npm run storage:setup -w apps/api
    ```
-3. **GitHub → repository → Settings → Secrets and variables → Actions**, add:
-   - `API_URL` = `https://nst-connect-api.vercel.app`
-   - `JOB_SECRET` = the second random secret
-
-   The "Escalation check" workflow then calls the API every hour (at 7 minutes past; every 15 minutes would use up the 2,000 free Actions minutes of a private repository). Run it once by hand (Actions → Escalation check →
-   Run workflow) and look for a result like `{"escalated":0,...}`.
+3. **Turn on the escalation schedule.** Without this nothing escalates on the live site: the workflow runs, finds no secrets, prints "nothing to do" and still shows green. In Terminal, in the project folder (with the GitHub command line, `gh`, logged in):
+   ```bash
+   gh secret set API_URL --body "https://nst-connect-api.vercel.app"
+   ```
+   ```bash
+   gh secret set JOB_SECRET
+   ```
+   The second one asks you to paste the secret (hidden). Use the **same** value as `JOB_SECRET` in the Vercel API project. Then run it once by hand and read the result:
+   ```bash
+   gh workflow run "Escalation check"
+   ```
+   ```bash
+   gh run list --workflow "Escalation check" --limit 1
+   ```
+   A working run's log contains a result like `{"escalated":0,"flaggedCritical":0,"warned":0}`. If it says "nothing to do", a secret is missing. GitHub often starts scheduled runs hours late on the free plan; for a steadier schedule add a free external scheduler (for example cron-job.org) that calls `POST <API address>/api/internal/escalation/run` with the header `x-job-secret`.
 4. **Admin:** open the web address → Sign up with the `ADMIN_EMAIL` address, click the link in the email, then log in. You land on
    **All teams**. From **Settings**, add the L3 people for each category; they add L2s, who add L1s. People can also sign up
    themselves and then be added.

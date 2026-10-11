@@ -79,6 +79,8 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 
 | Item | Why |
 | --- | --- |
+| **Deliver alerts to people** | Notification rows are recorded (new ticket, reply, solved, escalated, 12-hour warning, missed deadline, critical) but nothing shows or emails them. Students learn of a reply or a solved ticket only by opening the app, and POCs are not told of new or escalated tickets. Until this is built, tell staff to check **My queue** at least twice a day, or the 48-hour promise can be missed without anyone noticing. |
+| **Staff every category at all three levels** | Students are only offered a category that has someone assigned at L1, L2 and L3. A category with a gap is hidden, and the server refuses tickets in it. Until the teams are added in Settings, students see "Ticket topics are not open yet". Check the Categories page: every category should show a green "people assigned" badge, not a red "Hidden from students" one. |
 | Secrets that were shown in chat, screenshots or logs | Treat them as exposed: reset the Neon password (or delete the old Neon project), and re-create any R2 or Gmail app password that was pasted anywhere. |
 | Real sender address for email | Verification and notification emails currently come from a Gmail account (limit about 500 a day, may land in spam). Move to a proper sender on a company domain and update the `SMTP_*` and `MAIL_FROM` settings. |
 | GitHub repository secrets `API_URL` and `JOB_SECRET` | Without them the hourly escalation check does nothing. See DEPLOY.md, section 7. |
@@ -89,6 +91,7 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 ## 6. Final check
 
 - [ ] Demo data removed (step 1)
+- [ ] Every category shows a green "people assigned" badge on the Categories page (a full team at every level)
 - [ ] Only the two real domains allowed, switch deleted, API redeployed (step 2)
 - [ ] Test accounts deactivated (step 3)
 - [ ] A real student address signs up, receives the email and can raise a ticket with an attachment

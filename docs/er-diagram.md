@@ -64,7 +64,7 @@ erDiagram
     TICKET_EVENT {
         uuid id PK
         uuid ticket_id FK
-        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, CLOSED, REOPENED, LINKED, UNLINKED, REASSIGNED, CLOSED_BY_STUDENT"
+        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, CLOSED, REOPENED, LINKED, UNLINKED, REASSIGNED, CLOSED_BY_STUDENT, RENAMED"
         uuid actor_id FK "null for system"
         uuid assignee_id FK "who the ticket went to (ASSIGNED, ESCALATED, REOPENED)"
         enum from_status
@@ -126,7 +126,7 @@ erDiagram
     STAFF_AUDIT {
         uuid id PK
         uuid actor_id FK "who made the change"
-        string action "ADDED, UPDATED, REMOVED, LEAVE_ON, LEAVE_OFF, INVITE_SENT"
+        string action "ADDED, UPDATED, REMOVED, LEAVE_ON, LEAVE_OFF, INVITE_SENT, CATEGORY_ADDED, CATEGORY_UPDATED, CATEGORY_REMOVED, CATEGORY_RESTORED, TOPIC_ADDED, TOPIC_UPDATED, TOPIC_REMOVED, TOPIC_RESTORED"
         uuid target_user_id FK "nullable"
         uuid category_id "nullable"
         string summary "readable, e.g. Added Ravi as L1"
@@ -151,6 +151,12 @@ erDiagram
         string token_hash
         timestamp expires_at
         timestamp revoked_at
+    }
+    APP_SETTING {
+        string key PK "for example escalation_hours"
+        string value
+        timestamp updated_at
+        uuid updated_by_id
     }
     JOB_HEARTBEAT {
         string job_name PK
@@ -192,7 +198,7 @@ erDiagram
 
 | Decision | Why |
 | --- | --- |
-| Two-level categories: `CATEGORY` (11 main, including "Other") and `SUB_CATEGORY` (57) | Students pick a topic then what exactly it is; POCs are assigned per main category, while analytics can drill into sub-categories. Retired categories are marked inactive because old tickets still point at them. |
+| Two-level categories: `CATEGORY` (11 to start, including "Other") and `SUB_CATEGORY` (57 to start), managed by the Super Admin in the app | Students pick a topic then what exactly it is; POCs are assigned per main category, while analytics can drill into sub-categories. "Removing" sets `active = false` and "restore" sets it back, because old tickets, assignments and analytics point at them. A category or topic with open tickets cannot be removed, a live category keeps at least one active topic, and students are only offered a category that has an active topic and an active assignment at every level (1 to `max_level`). A rename adds a public `RENAMED` event ("Name updated") to every ticket still open under it, so the student sees it on the ticket. |
 | `role` is only STUDENT, POC or SUPER_ADMIN; level lives on `POC_ASSIGNMENT` | A POC's level and category can change without changing their account, and one person can cover more than one category. Signing up as staff creates a POC with no assignment: access only comes from being added in Settings. |
 | `manager_assignment_id` links an L1 assignment to its L2 | This is what lets an L2 see only the L1 team they oversee, and decides who can add or remove whom. |
 | Removing a person is a deactivation (`deactivated_at`, `active = false`), never a delete | Tickets, events and feedback still point at them. |
@@ -204,6 +210,7 @@ erDiagram
 | `resolved_level` on the ticket | Reopen returns the ticket to the level that resolved it. |
 | `ADMIN_NOTE` and its receipts are staff-only | No student endpoint or query touches these tables. The receipt rows fix the recipients at send time. |
 | `STAFF_AUDIT` | The "Recent changes" list in Settings. |
+| `APP_SETTING` | Settings the Super Admin changes in the app. Today only `escalation_hours`: how long a POC has before a ticket moves up (a whole number of days, 1 to 14, default 2). The value is read inside the transaction that sets a deadline, and changing it never touches deadlines already set. |
 | `JOB_HEARTBEAT` | The escalation endpoint records each run, so a missed schedule can be seen. |
 | Escalation is driven by `tat_deadline` and `tat_warned_at` | A scheduled call finds open tickets past their deadline and moves them up; the warning is sent once per deadline. |
 

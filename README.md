@@ -112,7 +112,9 @@ To add or change categories, sub-categories or POCs, edit `apps/api/prisma/categ
 
 ## Automatic escalation
 
-Every ticket has a 48-hour clock for the POC it is assigned to. Each action by that POC (reply, mark in progress, solve, close, escalate) restarts the clock. If it runs out, the ticket moves up one level (L1 → L2 → L3), the POC who did nothing gets a "missed" notification, and the next level gets a fresh 48 hours. A ticket that runs out at the top level is flagged **critical** and the Super Admin is notified. POCs get a warning 12 hours before their deadline. Students only see "Escalated to <team>".
+Every ticket has a clock for the POC it is assigned to: **2 days by default, and the Super Admin can change it** (1 to 14 days) from **Settings → Escalation time**. A change applies from then on: a ticket's current deadline is left alone, and the new limit is used the next time its clock restarts (a new ticket, a POC action, an escalation or a reopen). Below, "48 hours" means whatever limit is set. Each action by that POC (reply, mark in progress, solve, close, escalate) restarts the clock. If it runs out, the ticket moves up one level (L1 → L2 → L3), the POC who did nothing is recorded as having missed it, and the next level gets a fresh clock. A ticket that runs out at the top level is flagged **critical**. Students only see "Escalated to <team>".
+
+> **Alerts are not delivered yet.** The system records a notification row for the important events (a new ticket, a reply, a solved ticket, an escalation, the 12-hour warning, a missed deadline, a critical ticket), but no screen shows them and no email is sent for them. Today people see changes only by opening the app: a POC finds new and escalated tickets in **My queue**, and a student sees replies on their ticket page. The only emails sent are sign-up verification, staff invitations and the admin's notes. Delivering these alerts (email or in-app) is listed in the go-live checklist.
 
 - **On a server that stays running:** inside the API every 15 minutes (and once ~10 seconds after it starts, to catch up after downtime). Settings: `ESCALATION_JOB_ENABLED`, `ESCALATION_INTERVAL_MINUTES`, `TAT_WARNING_HOURS` in `.env`.
 - **On serverless hosting (Vercel):** there is no timer, so set `ESCALATION_JOB_ENABLED=false` and `JOB_SECRET` (16+ characters), and let a schedule call `POST /internal/escalation/run` with the header `x-job-secret`. `.github/workflows/escalation.yml` does this hourly. Without `JOB_SECRET` that endpoint does not exist.
@@ -152,11 +154,11 @@ Open **Settings** from the account menu (L2, L3 and the Super Admin; L1 does not
 - **Edit:** name and who they report to. Email and level are fixed: remove and re-add to change them.
 - **Remove:** never a hard delete. Open tickets are handed to colleagues at the same level (or escalated if nobody else is available), the person can no longer log in, and their past work stays in the analytics. You cannot remove the last POC at a level, or someone who still has a team under them.
 - **Recent changes** lists who did what. Every rule is enforced on the server, not just hidden in the screen.
-- API: `GET /staff/team`, `/staff/options`, `/staff/audit`; `POST /staff`, `PATCH /staff/:id`, `POST /staff/:id/leave|remove|resend-invite`; `PUT /staff/me/leave`.
+- API: `GET /staff/team`, `/staff/options`, `/staff/audit`; `POST /staff`, `PATCH /staff/:id`, `POST /staff/:id/leave|remove|resend-invite`.
 
 ### Leave
 
-Any POC (L1 too) can choose **Go on leave** in the account menu, with a required return date, and managers can do it for their reports. While on leave a POC gets no new tickets. Their open tickets move to another POC at the same level, or are escalated if nobody else is on duty; if every POC at a level is on leave, new tickets start at the next level up. Students never see any of this, and these moves are not counted as manual or automatic escalations in the analytics.
+Nobody puts themselves on leave. It is set from **Settings** by the person's manager, with a required return date: an **L1** by their L2 (or the L3 above), an **L2** by their L3, and an **L3** by the Super Admin. The admin has no leave. A person on leave sees an "On leave · back <date>" note in their account menu, and their manager can bring them back early with **Back from leave**. While on leave a POC gets no new tickets. Their open tickets move to another POC at the same level, or are escalated if nobody else is on duty; if every POC at a level is on leave, new tickets start at the next level up. Students never see any of this, and these moves are not counted as manual or automatic escalations in the analytics.
 
 `npm run db:seed` only creates what is missing, so it never undoes changes made in Settings.
 
@@ -164,7 +166,7 @@ Any POC (L1 too) can choose **Go on leave** in the account menu, with a required
 
 A student can close any open ticket from its page (**Close ticket**, with a confirmation), for example when they sorted it out themselves.
 
-- It leaves the POC's open queue straight away and its 48-hour clock stops. The POC who held it gets a quiet notification, and it stays in their **Done** tab marked "Closed by student".
+- It leaves the POC's open queue straight away and its clock stops. The POC who held it gets a quiet notification, and it stays in their **Done** tab marked "Closed by student".
 - It is **not a POC outcome**: analytics never count it as Solved or Closed, it is not part of finish times, and the student is not asked for feedback on it.
 - The student can change their mind: **Reopen ticket** sends it back to the level it was at. A ticket they closed is never "final", even at the top level.
 - API: `POST /tickets/:id/close` (student).
@@ -173,7 +175,7 @@ A student can close any open ticket from its page (**Close ticket**, with a conf
 
 See **[DEPLOY.md](DEPLOY.md)** for the step-by-step guide to hosting both apps free on Vercel (with Neon, Cloudflare R2, Upstash and GitHub Actions).
 
-## Email (sign-up verification and notifications)
+## Email (sign-up verification, invitations and admin notes)
 
 By default every email goes to **Mailpit** (http://localhost:8025), a local catcher: nothing reaches a real inbox, which is handy for development. To send **real email** (so a student gets the verification link in their own inbox), fill in an SMTP provider in `.env`:
 
@@ -197,6 +199,17 @@ STUDENT_EMAIL_DOMAIN=adypu.edu.in,gmail.com
 
 The API logs a warning at every start while an extra domain is allowed. Remove it when you are done. The automated tests always use the real college domain, whatever `.env` says.
 
+## Categories and topics
+
+The Super Admin manages what students can raise tickets about, from **Categories** in the account menu (top right). A category has topics (called sub-categories in the database), and students pick a topic when they raise a ticket.
+
+- **Add a category** with its first topics (at least one), and add or rename topics any time.
+- **Students only see a category once somebody is assigned at every level** (L1, L2 and L3), so a new ticket always has a full chain of people to answer it within 48 hours. A category without a full team is marked "Hidden from students · needs L2, L3" on the Categories page, and the server refuses new tickets in it. Add its team from Settings. If a level later loses everyone, the category is hidden again until it is staffed (existing tickets carry on). People on leave still count as assigned.
+- **Remove** never deletes. It hides a category or topic from new tickets, while old tickets, staff assignments and analytics keep their names. **Restore** brings it back. A category or a topic **cannot be removed while it has open tickets** (solve or close them first), and a live category always keeps at least one topic.
+- **Renaming** changes the name everywhere, including on old tickets. Each ticket that is still open gets a **"Name updated" note on its timeline** (for example "The topic “Laundry Services” is now “Laundry”."), so the student sees on the ticket itself what changed. No email is sent.
+- Changes are recorded under "Recent changes" in Settings.
+- The seed only **creates** what is missing. Re-running it never renames, hides or restores anything the admin changed (only the test suite's reset mode does).
+
 ## Student feedback
 
 When a ticket is Solved or Closed, the student's ticket page shows **Share your feedback / How did we do?** with three choices (😊 Satisfied, 😐 Okay, 😞 Not satisfied) and an optional comment (up to 500 characters). It is separate from reopening, and L3 outcomes (which cannot be reopened) can still be rated.
@@ -217,8 +230,8 @@ Staff-only dashboards (students never reach them). Every view runs the same quer
 | L1, L2, L3 | **Overall analytics** | What is being raised in their category across all levels: the most repeated categories, sub-categories and phrases. Read only, no personal stats |
 | Super Admin | **All teams** | Compare every category; filter by category and level to see each POC |
 
-- **Time to finish** is ticket created → Solved/Closed. Only finished tickets count; the median and "finished within 48h" are shown next to the average.
-- **Auto-escalated** means a POC held a ticket for 48 hours without acting. "From me" is the POC who missed it, "to me" is the one who inherited it. Manual and automatic escalations are shown separately.
+- **Time to finish** is ticket created → Solved/Closed. Only finished tickets count; the median and "finished within the limit" are shown next to the average.
+- **Auto-escalated** means a POC held a ticket past the time limit without acting. "From me" is the POC who missed it, "to me" is the one who inherited it. Manual and automatic escalations are shown separately.
 - Choose 7, 30, 90 days or a custom range. Short ranges plot daily points, long ones weekly.
 - API: `GET /analytics/me|team|overall` (POC), `GET /analytics/admin?categoryId=&level=&pocId=` (Super Admin), all with `from` and `to` (`YYYY-MM-DD`).
 
