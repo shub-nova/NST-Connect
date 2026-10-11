@@ -83,7 +83,7 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 | **Staff every category at all three levels** | Students are only offered a category that has someone assigned at L1, L2 and L3. A category with a gap is hidden, and the server refuses tickets in it. Until the teams are added in Settings, students see "Ticket topics are not open yet". Check the Categories page: every category should show a green "people assigned" badge, not a red "Hidden from students" one. |
 | Secrets that were shown in chat, screenshots or logs | Treat them as exposed: reset the Neon password (or delete the old Neon project), and re-create any R2 or Gmail app password that was pasted anywhere. |
 | Real sender address for email | Verification and notification emails currently come from a Gmail account (limit about 500 a day, may land in spam). Move to a proper sender on a company domain and update the `SMTP_*` and `MAIL_FROM` settings. |
-| GitHub repository secrets `API_URL` and `JOB_SECRET` | Without them the hourly escalation check does nothing. See DEPLOY.md, section 7. |
+| The escalation schedule (cron-job.org) | Without it nothing escalates on the live site. Check Settings → Escalation time: it should say the check ran within the last hour. See DEPLOY.md, section 7. |
 | Forgot-password flow | Not built yet: a person who loses their password has no way to reset it in the app. |
 | More than one admin | The admin password is set with a script (`npm run admin:set-password -w apps/api`). Adding verified admins from inside the app is planned. |
 | Custom domain | If you add one, add it to `WEB_URL` (API project) and to the R2 bucket's CORS policy, then redeploy. |
@@ -96,4 +96,4 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 - [ ] Test accounts deactivated (step 3)
 - [ ] A real student address signs up, receives the email and can raise a ticket with an attachment
 - [ ] A real `@newtonschool.co` person is added in Settings, signs up and sees their queue
-- [ ] The escalation workflow ran green (GitHub, Actions, Escalation check)
+- [ ] Settings → Escalation time says the last escalation check ran within the last hour

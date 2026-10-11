@@ -1,6 +1,6 @@
 # NST Connect
 
-Helpdesk and ticketing system for Newton School students. Students raise tickets, each ticket is routed to its category's POC, and tickets that sit untouched for 48 hours escalate automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
+Helpdesk and ticketing system for Newton School students. Students raise tickets, each ticket is routed to its category's POC, and a ticket that is not solved within the time limit (2 days by default, set by the admin) escalates automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
 
 **What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it, and [docs/go-live-checklist.md](docs/go-live-checklist.md) lists what to switch off before real users arrive; `docs/` has the database and ticket-lifecycle diagrams.
 
@@ -112,12 +112,18 @@ To add or change categories, sub-categories or POCs, edit `apps/api/prisma/categ
 
 ## Automatic escalation
 
-Every ticket has a clock for the POC it is assigned to: **2 days by default, and the Super Admin can change it** (1 to 14 days) from **Settings → Escalation time**. A change applies from then on: a ticket's current deadline is left alone, and the new limit is used the next time its clock restarts (a new ticket, a POC action, an escalation or a reopen). Below, "48 hours" means whatever limit is set. Each action by that POC (reply, mark in progress, solve, close, escalate) restarts the clock. If it runs out, the ticket moves up one level (L1 → L2 → L3), the POC who did nothing is recorded as having missed it, and the next level gets a fresh clock. A ticket that runs out at the top level is flagged **critical**. Students only see "Escalated to <team>".
+Every ticket has a **deadline for solving it** at its current level: **2 days by default, and the Super Admin can change it** (1 to 14 days) from **Settings → Escalation time**.
+
+- **Only solving or closing the ticket stops the clock.** Replying, or marking it in progress, does **not** restart it, so a POC cannot keep a ticket by replying "looking into it".
+- **A fresh clock starts** when a ticket reaches a level: a new ticket, a reopen, an escalation (automatic or by hand), or a hand-over when someone goes on leave. Each level gets the full time.
+- **If the deadline passes**, the ticket moves up one level (L1 → L2 → L3), the POC who held it is recorded as having missed it, and the next level gets a fresh clock. A ticket that is not solved in time at the top level is flagged **critical** and stays critical until it is solved or closed.
+- **A change to the limit applies from then on:** a ticket's current deadline is left alone, and the new limit is used the next time a clock starts for it.
+- Students only see "Escalated to <team>".
 
 > **Alerts are not delivered yet.** The system records a notification row for the important events (a new ticket, a reply, a solved ticket, an escalation, the 12-hour warning, a missed deadline, a critical ticket), but no screen shows them and no email is sent for them. Today people see changes only by opening the app: a POC finds new and escalated tickets in **My queue**, and a student sees replies on their ticket page. The only emails sent are sign-up verification, staff invitations and the admin's notes. Delivering these alerts (email or in-app) is listed in the go-live checklist.
 
 - **On a server that stays running:** inside the API every 15 minutes (and once ~10 seconds after it starts, to catch up after downtime). Settings: `ESCALATION_JOB_ENABLED`, `ESCALATION_INTERVAL_MINUTES`, `TAT_WARNING_HOURS` in `.env`.
-- **On serverless hosting (Vercel):** there is no timer, so set `ESCALATION_JOB_ENABLED=false` and `JOB_SECRET` (16+ characters), and let a schedule call `POST /internal/escalation/run` with the header `x-job-secret`. `.github/workflows/escalation.yml` does this hourly. Without `JOB_SECRET` that endpoint does not exist.
+- **On serverless hosting (Vercel):** there is no timer, so set `ESCALATION_JOB_ENABLED=false` and `JOB_SECRET` (16+ characters), and let an outside scheduler call `POST /api/internal/escalation/run` with the header `x-job-secret`. We use a free **cron-job.org** job every 30 minutes (steps in [DEPLOY.md](DEPLOY.md), section 7). Without `JOB_SECRET` that endpoint does not exist. The admin sees when the check last ran under **Settings → Escalation time**.
 - **Try it locally:** raise a ticket, then push its deadline into the past and restart the API:
 
 ```bash
@@ -128,7 +134,7 @@ docker exec nst-connect-db-1 psql -U nstconnect -d nstconnect -c "UPDATE ticket 
 
 When many students report the same problem, right-click a ticket in **My queue** and choose **Select** (on a phone, press and hold). Checkboxes then appear on every ticket, so you can tick more or use "Select all". Use the bar that appears: **Solve**, **Close**, **Escalate** or **Reply**, with one note for the whole batch (up to 50 tickets at a time).
 
-- Each ticket is handled exactly as if it were done alone: same permission checks, its own history entry, its own notice to its own student, and a fresh 48-hour clock where that applies. Escalation spreads tickets across the next level's POCs.
+- Each ticket is handled exactly as if it were done alone: same permission checks, its own history entry, its own notice to its own student, and a fresh clock where that applies (escalating). Escalation spreads tickets across the next level's POCs.
 - A ticket that cannot be changed (already finished, moved by someone else, nobody on duty above) is listed with the reason and does not stop the rest.
 - Students never see that a ticket was part of a batch, and the Escalate reason stays staff-only. Escalate is hidden for L3, the top level.
 - API: `POST /poc/tickets/bulk` with `{ ticketIds, action: SOLVED | CLOSED | ESCALATED | REPLY, note }`.
@@ -173,7 +179,7 @@ A student can close any open ticket from its page (**Close ticket**, with a conf
 
 ## Deploying
 
-See **[DEPLOY.md](DEPLOY.md)** for the step-by-step guide to hosting both apps free on Vercel (with Neon, Cloudflare R2, Upstash and GitHub Actions).
+See **[DEPLOY.md](DEPLOY.md)** for the step-by-step guide to hosting both apps free on Vercel (with Neon, Cloudflare R2, Upstash and cron-job.org).
 
 ## Email (sign-up verification, invitations and admin notes)
 

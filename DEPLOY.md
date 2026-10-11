@@ -13,7 +13,7 @@ Two Vercel projects from this one repository, plus a few free services.
 | File uploads | Cloudflare R2 (or Backblaze B2, Supabase Storage) | Free |
 | Rate-limit counters | Upstash Redis | Free |
 | Email | Gmail SMTP (or Brevo) | Free |
-| Escalation schedule | GitHub Actions | Free |
+| Escalation schedule | cron-job.org (calls the API every 30 minutes) | Free |
 
 Free plans change. Check each provider's current limits before relying on them.
 
@@ -128,21 +128,15 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
    ```bash
    npm run storage:setup -w apps/api
    ```
-3. **Turn on the escalation schedule.** Without this nothing escalates on the live site: the workflow runs, finds no secrets, prints "nothing to do" and still shows green. In Terminal, in the project folder (with the GitHub command line, `gh`, logged in):
-   ```bash
-   gh secret set API_URL --body "https://nst-connect-api.vercel.app"
-   ```
-   ```bash
-   gh secret set JOB_SECRET
-   ```
-   The second one asks you to paste the secret (hidden). Use the **same** value as `JOB_SECRET` in the Vercel API project. Then run it once by hand and read the result:
-   ```bash
-   gh workflow run "Escalation check"
-   ```
-   ```bash
-   gh run list --workflow "Escalation check" --limit 1
-   ```
-   A working run's log contains a result like `{"escalated":0,"flaggedCritical":0,"warned":0}`. If it says "nothing to do", a secret is missing. GitHub often starts scheduled runs hours late on the free plan; for a steadier schedule add a free external scheduler (for example cron-job.org) that calls `POST <API address>/api/internal/escalation/run` with the header `x-job-secret`.
+3. **Turn on the escalation schedule.** Vercel has no always-on process, so something outside must call the API regularly. Without it **nothing escalates on the live site**. We use a free scheduler, **cron-job.org** (no card needed):
+   1. Sign up at cron-job.org, confirm your email, and log in.
+   2. **Create cronjob.** Title `NST Connect escalation`. URL `https://nst-connect-api.vercel.app/api/internal/escalation/run` (use your API address).
+   3. **Schedule:** every 30 minutes.
+   4. Open **Advanced**: Request method **POST**; under **Headers** add the name `x-job-secret` and, as its value, the same `JOB_SECRET` as in the Vercel API project. Request timeout 30 seconds.
+   5. Save, then use **Test run**. A good response is HTTP 200 with a body like `{"escalated":0,"flaggedCritical":0,"warned":0}`. HTTP 401 means the secret differs from the one in Vercel.
+   6. In the job's notification settings, turn on a failure alert to your email.
+
+   **Is it on time?** As the Super Admin open **Settings**: the **Escalation time** card says "Last escalation check ran 12 min ago". If it is more than a few hours old it turns red and says the schedule needs attention. The check is safe to call from several places at once, so a second scheduler is only ever a backup.
 4. **Admin:** open the web address → Sign up with the `ADMIN_EMAIL` address, click the link in the email, then log in. You land on
    **All teams**. From **Settings**, add the L3 people for each category; they add L2s, who add L1s. People can also sign up
    themselves and then be added.
@@ -153,7 +147,7 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
 - [ ] A student can sign up with an `@adypu.edu.in` address and the verification email arrives.
 - [ ] After logging in, **refresh the page**: you stay logged in. (If not, check `COOKIE_PATH` and `API_ORIGIN`.)
 - [ ] A student can raise a ticket and attach a file; a POC can open the file.
-- [ ] The scheduled workflow runs green.
+- [ ] Settings → Escalation time says the last check ran within the last hour.
 - [ ] Hammering the login with wrong passwords gets blocked after a while (this proves the Redis counters work).
 
 ## If something fails

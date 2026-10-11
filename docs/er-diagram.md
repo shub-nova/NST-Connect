@@ -54,7 +54,7 @@ erDiagram
         uuid assigned_poc_id FK "nullable, internal only"
         timestamp tat_deadline
         timestamp tat_warned_at "when the 12-hours-left warning went out for this deadline"
-        boolean critical "top level reached and still nobody acted"
+        boolean critical "the top level did not solve it within the time limit"
         boolean closed_by_student "the student closed it themselves; not a POC outcome"
         uuid parent_ticket_id FK "reserved for duplicate linking; not used yet"
         timestamp created_at
