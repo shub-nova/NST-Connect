@@ -13,6 +13,7 @@ erDiagram
         string enrollment_id "students, from email local part"
         timestamp email_verified_at
         timestamp deactivated_at "set when a person is removed from their last role: they can no longer log in"
+        timestamp password_reset_sent_at "when a reset link was last emailed; another is not sent for 2 minutes"
         timestamp created_at
     }
     CATEGORY {

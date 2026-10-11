@@ -80,6 +80,8 @@ It should return `{"status":"ok","database":"up"}`. Then open http://localhost:3
 
 **Students** register themselves with an `@adypu.edu.in` address and verify by email.
 
+**Forgot password:** on the login page, **Forgot password?** asks for the email and sends a link (valid for 1 hour, usable once). The page always answers the same ("if an account exists…") and takes the same time, so it cannot be used to find out who is registered. Only a verified, active account with a password gets a link, and another is not sent within 2 minutes of the last. Choosing a new password signs the account out everywhere. It works for students and staff alike. The Super Admin's own address on a shared mailbox nobody can open can still use `npm run admin:set-password -w apps/api`.
+
 **Staff cannot choose their own role.** Their accounts are created by the seed from a fixed list: one L1, one L2 and one L3 per category, plus one Super Admin. A ticket starts with L1 and can be escalated L1 → L2 → L3. **L3 is the top level**: it cannot escalate further, and a ticket it Solves or Closes is final (the student cannot reopen it).
 
 | Category | L1 | L2 | L3 |

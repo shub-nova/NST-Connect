@@ -84,7 +84,6 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 | Secrets that were shown in chat, screenshots or logs | Treat them as exposed: reset the Neon password (or delete the old Neon project), and re-create any R2 or Gmail app password that was pasted anywhere. |
 | Real sender address for email | Verification and notification emails currently come from a Gmail account (limit about 500 a day, may land in spam). Move to a proper sender on a company domain and update the `SMTP_*` and `MAIL_FROM` settings. |
 | The escalation schedule (cron-job.org) | Without it nothing escalates on the live site. Check Settings → Escalation time: it should say the check ran within the last hour. See DEPLOY.md, section 7. |
-| Forgot-password flow | Not built yet: a person who loses their password has no way to reset it in the app. |
 | More than one admin | The admin password is set with a script (`npm run admin:set-password -w apps/api`). Adding verified admins from inside the app is planned. |
 | Custom domain | If you add one, add it to `WEB_URL` (API project) and to the R2 bucket's CORS policy, then redeploy. |
 
@@ -95,5 +94,6 @@ Tickets raised during testing by Gmail students stay in the system. Decide wheth
 - [ ] Only the two real domains allowed, switch deleted, API redeployed (step 2)
 - [ ] Test accounts deactivated (step 3)
 - [ ] A real student address signs up, receives the email and can raise a ticket with an attachment
+- [ ] Forgot password works with a real address: the link arrives (check spam), sets a new password, and the old password stops working
 - [ ] A real `@newtonschool.co` person is added in Settings, signs up and sees their queue
 - [ ] Settings → Escalation time says the last escalation check ran within the last hour
