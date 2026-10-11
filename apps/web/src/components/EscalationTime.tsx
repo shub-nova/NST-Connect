@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import type { EscalationSetting } from "@/lib/types";
-import { btnCls, cardCls, ErrorNote } from "./ui";
+import { btnCls, cardCls, ErrorNote, timeAgo } from "./ui";
 
 /** Common choices; the current value is always offered too, in case it was set some other way. */
 const CHOICES = [1, 2, 3, 4, 5, 6, 7, 10, 14];
@@ -16,6 +16,7 @@ export default function EscalationTime() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [openedAt] = useState(() => Date.now()); // "how long ago" is judged from when the page was opened
 
   useEffect(() => {
     let cancelled = false;
@@ -47,6 +48,9 @@ export default function EscalationTime() {
     }
   }
 
+  // The check should run at least hourly. If it has not for a few hours, the schedule needs attention.
+  const lastRun = setting?.lastRunAt ?? null;
+  const stale = !!setting && (!lastRun || openedAt - new Date(lastRun).getTime() > 3 * 3_600_000);
   const options = setting && !CHOICES.includes(setting.days) ? [...CHOICES, setting.days].sort((a, b) => a - b) : CHOICES;
   const changed = !!setting && choice !== setting.days;
 
@@ -56,7 +60,7 @@ export default function EscalationTime() {
         Escalation time
       </h2>
       <p className="mt-1 text-sm text-muted">
-        If a POC does nothing for this long, the ticket moves up to the next level. It applies from now on: tickets already open keep their current deadline until their next action.
+        A POC has this long to solve a ticket. If it is not solved in time, it moves up to the next level, and replies do not restart the clock. It applies from now on: tickets already open keep their current deadline.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2.5">
         <label className="sr-only" htmlFor="escalation-days">
@@ -87,6 +91,13 @@ export default function EscalationTime() {
           </span>
         )}
       </div>
+      {setting && (
+        <p className={`mt-3 text-sm ${stale ? "font-medium text-red-600" : "text-muted"}`} role={stale ? "alert" : undefined}>
+          {lastRun
+            ? `Last escalation check ran ${timeAgo(lastRun)}.${stale ? " That is late: tickets are not being escalated on time. Check the schedule." : ""}`
+            : "The escalation check has not run yet. Set up the schedule so tickets can escalate."}
+        </p>
+      )}
       <div className="mt-3">
         <ErrorNote message={error} />
       </div>

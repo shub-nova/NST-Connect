@@ -113,7 +113,7 @@ export interface PocQueueTicket {
   /** The student closed it themselves, so it is no longer open. */
   closedByStudent: boolean;
   currentLevel: number;
-  /** Nobody acted at the top level either. */
+  /** The top level did not solve it in time either. */
   critical: boolean;
   tatDeadline: string | null;
   createdAt: string;
@@ -318,4 +318,6 @@ export interface EscalationSetting {
   defaultDays: number;
   minDays: number;
   maxDays: number;
+  /** When the escalation check last ran, or null if it never has. */
+  lastRunAt: string | null;
 }

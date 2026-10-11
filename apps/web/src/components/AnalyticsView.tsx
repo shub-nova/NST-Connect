@@ -660,7 +660,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               <h2 className="text-lg font-semibold text-ink">Analytics</h2>
               <Row>
                 {!finalLevel && (
-                  <Section title="Escalations" hint={`Automatic: nobody acted within ${limit.long}. Manual: a POC chose to escalate.`}>
+                  <Section title="Escalations" hint={`Automatic: not solved within ${limit.long}. Manual: a POC chose to escalate.`}>
                     {data.trend.some((p) => p.autoEscalated || p.manualEscalated) ? (
                       <>
                         <Legend items={[{ label: "Manual", color: COLORS.amber }, { label: "Automatic (TAT)", color: COLORS.red }]} />
@@ -838,7 +838,7 @@ export default function AnalyticsView({ endpoint, filters }: Props) {
               <ul className="mt-3 list-disc space-y-1.5 pl-5">
                 <li><b>How long tickets took</b>: days from when the student raised the ticket until a POC marked it Solved or Closed, rounded up. Only finished tickets count.</li>
                 <li><b>Action needed / total</b>: open tickets waiting on the POC, out of all tickets they were involved with in the period.</li>
-                <li><b>Auto-escalated</b>: the POC did not act within {limit.long}, so the system moved the ticket up. &quot;From me&quot; means I held it; &quot;to me&quot; means I inherited it.</li>
+                <li><b>Auto-escalated</b>: the POC did not solve it within {limit.long}, so the system moved the ticket up. &quot;From me&quot; means I held it; &quot;to me&quot; means I inherited it.</li>
                 <li><b>Solved / Closed / Escalated</b>: outcomes the POC chose themselves in the period.</li>
               </ul>
             </details>
