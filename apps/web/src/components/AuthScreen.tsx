@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, GitBranch, Pencil } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
@@ -209,17 +209,6 @@ function SignupForm() {
   );
 }
 
-function FeatureTile({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
-  return (
-    // Plain text with an icon, no box or fill: a bordered tile looks like a button, and these do nothing when clicked.
-    <div className="flex flex-1 items-center gap-2.5">
-      <span className="text-brand">{icon}</span>
-      <span className="text-sm font-medium leading-snug text-muted">{children}</span>
-    </div>
-  );
-}
-
-
 export default function AuthScreen({ mode }: { mode: Mode }) {
   if (mode === "login") {
     return (
@@ -252,22 +241,6 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
       <TopBar mode="signup" />
       <main className="flex flex-1 items-start justify-center px-4 py-10 sm:items-center">
         <div className="w-full max-w-md space-y-6 rounded-2xl border border-line bg-white p-5 sm:p-7">
-          <div className="flex gap-4 border-b border-line pb-5">
-            <FeatureTile
-              icon={
-                <Pencil className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
-              }
-            >
-              Raise a ticket in seconds
-            </FeatureTile>
-            <FeatureTile
-              icon={
-                <GitBranch className="h-5 w-5" strokeWidth={1.8} aria-hidden="true" />
-              }
-            >
-              Track every update
-            </FeatureTile>
-          </div>
           <SignupForm />
           <p className="text-center text-sm text-ink">
             Already have an account?{" "}
