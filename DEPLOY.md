@@ -94,7 +94,7 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
    | `JWT_SECRET` | the first random secret |
    | `WEB_URL` | `https://nst-connect-web.vercel.app` |
    | `COOKIE_PATH` | `/api/auth` |
-   | `TRUST_PROXY` | `true` |
+   | `TRUST_PROXY` | `true` (optional on Vercel, where the proxy is trusted automatically; the rate limits need the visitor's real address) |
    | `STUDENT_EMAIL_DOMAIN` | `adypu.edu.in` (one domain only) |
    | `POC_EMAIL_DOMAIN` | `newtonschool.co` |
    | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | your mail provider |
