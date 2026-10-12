@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useDismiss } from "@/lib/use-dismiss";
 import type { AnalyticsAccess } from "@/lib/types";
 import { NOTES_CHANGED, NotesBell, SentNotesBell } from "./AdminNotes";
 import { Avatar } from "./ui";
@@ -85,14 +86,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [status, role]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [menuOpen]);
+  useDismiss(menuOpen, menuRef, () => setMenuOpen(false));
 
   // While the session is being restored, draw the page frame at once instead of a blank screen.
   if (status !== "authed" || !user) return <ShellSkeleton />;

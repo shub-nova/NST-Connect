@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AddCategoryDialog, ConfirmDialog, EditCategoryDialog, RenameTopicDialog } from "@/components/CatalogDialogs";
 import { BackLink, btnCls, btnGhostCls, cardCls, ErrorNote, inputCls } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useDismiss } from "@/lib/use-dismiss";
 import type { CatalogCategory, CatalogTopic, RenameResult } from "@/lib/types";
 
 type Dialog =
@@ -25,12 +26,7 @@ const linkBtn = "text-sm font-medium text-brand hover:underline disabled:opacity
 function ActionMenu({ label, items, variant = "row" }: { label: string; items: { label: string; onClick: () => void; danger?: boolean }[]; variant?: "category" | "row" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+  useDismiss(open, ref, () => setOpen(false));
   return (
     <div className="relative shrink-0" ref={ref}>
       {/* The category's menu is a bordered button in the card header; a topic's is a small plain one in its row. */}

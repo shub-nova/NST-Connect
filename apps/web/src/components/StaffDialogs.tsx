@@ -1,29 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { HandoffSummary, StaffOptions, StaffPerson } from "@/lib/types";
-import { btnCls, btnGhostCls, ErrorNote, Field, inputCls, Modal, PillSelect, Segmented } from "./ui";
+import { DialogActions, errorText } from "./DialogParts";
+import { ErrorNote, Field, inputCls, Modal, PillSelect, Segmented } from "./ui";
 
 const fieldCls = inputCls;
-const errorText = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
-
-function Actions({ onClose, busy, label, danger }: { onClose: () => void; busy: boolean; label: string; danger?: boolean }) {
-  return (
-    <div className="mt-5 flex flex-wrap justify-end gap-2.5">
-      <button type="button" onClick={onClose} className={btnGhostCls}>
-        Cancel
-      </button>
-      <button
-        type="submit"
-        disabled={busy}
-        className={danger ? "inline-flex items-center justify-center rounded-lg bg-red-600 px-5 py-2.5 text-[15px] font-semibold text-white transition hover:bg-red-700 disabled:opacity-60" : btnCls}
-      >
-        {busy ? "Please wait…" : label}
-      </button>
-    </div>
-  );
-}
 
 // ---- leave: set by a manager for the person below them (nobody sets their own) ------------------
 
@@ -66,7 +49,7 @@ export function LeaveDialog({
           </Field>
         </div>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Put on leave" />
+        <DialogActions onClose={onClose} busy={busy} label="Put on leave" />
       </form>
     </Modal>
   );
@@ -150,7 +133,7 @@ export function AddDialog({ options, defaultCategoryId, onClose, onDone }: { opt
           </div>
         )}
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Add and invite" />
+        <DialogActions onClose={onClose} busy={busy} label="Add and invite" />
       </form>
     </Modal>
   );
@@ -201,7 +184,7 @@ export function EditDialog({ person, options, onClose, onDone }: { person: Staff
           </div>
         )}
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Save" />
+        <DialogActions onClose={onClose} busy={busy} label="Save" />
       </form>
     </Modal>
   );
@@ -236,7 +219,7 @@ export function RemoveDialog({ person, onClose, onDone }: { person: StaffPerson;
           They will no longer be able to log in, and their past work stays in the numbers.
         </p>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Remove" danger />
+        <DialogActions onClose={onClose} busy={busy} label="Remove" danger />
       </form>
     </Modal>
   );

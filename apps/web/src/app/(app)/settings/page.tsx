@@ -7,6 +7,7 @@ import EscalationTime from "@/components/EscalationTime";
 import { AddDialog, EditDialog, LeaveDialog, RemoveDialog } from "@/components/StaffDialogs";
 import { Avatar, btnCls, cardCls, ErrorNote, PillSelect, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useDismiss } from "@/lib/use-dismiss";
 import { useAuth } from "@/lib/auth";
 import type { AnalyticsAccess, HandoffSummary, StaffChange, StaffOptions, StaffPerson } from "@/lib/types";
 
@@ -20,12 +21,7 @@ const STATUS = {
 function RowMenu({ person, onEdit, onLeave, onBack, onResend, onRemove }: { person: StaffPerson; onEdit: () => void; onLeave: () => void; onBack: () => void; onResend: () => void; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
+  useDismiss(open, ref, () => setOpen(false));
   const item = "w-full rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-surface";
   const run = (fn: () => void) => () => {
     setOpen(false);

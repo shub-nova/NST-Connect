@@ -1,6 +1,6 @@
 import type { AuthResponse } from "./types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 // The access token lives only in memory. The long-lived refresh token is an
 // httpOnly cookie that scripts cannot read, so a page script can never steal it.

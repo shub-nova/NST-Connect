@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import BulkDialog, { type BulkAction } from "@/components/BulkDialog";
 import { ErrorNote, SubCategoryIcon, STATUS_TEXT, StatusBadge, btnCls, btnGhostCls, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
+import { useDismiss } from "@/lib/use-dismiss";
 import type { PocQueuePage, PocQueueTicket } from "@/lib/types";
 
 type View = "open" | "done";
@@ -87,21 +88,8 @@ export default function PocQueuePage() {
     };
   }, [view, activeSort, key]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const close = () => setMenu(null);
-    // A press inside the menu must not close it first, or the click on "Select" never lands.
-    const closeOutside = (e: MouseEvent) => !menuRef.current?.contains(e.target as Node) && close();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("mousedown", closeOutside);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      document.removeEventListener("mousedown", closeOutside);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [menu]);
+  // Closes on a press outside, on Escape, or when the list scrolls (the menu is positioned on screen).
+  useDismiss(!!menu, menuRef, () => setMenu(null), { escape: true, scroll: true });
 
   const ready = loaded && loaded.key === key ? loaded : null;
   const tickets = ready?.tickets ?? [];

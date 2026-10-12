@@ -1,28 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import type { CatalogCategory, RenameResult } from "@/lib/types";
-import { btnCls, btnGhostCls, ErrorNote, Field, inputCls, Modal } from "./ui";
+import { DialogActions, errorText } from "./DialogParts";
+import { ErrorNote, Field, inputCls, Modal } from "./ui";
 
-const errorText = (err: unknown, fallback: string) => (err instanceof ApiError ? err.message : fallback);
-
-function Actions({ onClose, busy, label, danger }: { onClose: () => void; busy: boolean; label: string; danger?: boolean }) {
-  return (
-    <div className="mt-5 flex flex-wrap justify-end gap-2.5">
-      <button type="button" onClick={onClose} className={btnGhostCls}>
-        Cancel
-      </button>
-      <button
-        type="submit"
-        disabled={busy}
-        className={danger ? "inline-flex items-center justify-center rounded-lg bg-red-600 px-5 py-2.5 text-[15px] font-semibold text-white transition hover:bg-red-700 disabled:opacity-60" : btnCls}
-      >
-        {busy ? "Please wait…" : label}
-      </button>
-    </div>
-  );
-}
 
 /** Runs a request from a form: shows the server's message when it fails, and closes through `onDone` when it works. */
 function useSubmit<T>(run: () => Promise<T>, onDone: (result: T) => void, fallback: string) {
@@ -61,7 +44,7 @@ export function AddCategoryDialog({ onClose, onDone }: { onClose: () => void; on
         </Field>
         <p className="text-xs font-medium text-red-600">Students will not see this category until it has staff at every level: add its L3, L2 and L1 from Settings.</p>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Add category" />
+        <DialogActions onClose={onClose} busy={busy} label="Add category" />
       </form>
     </Modal>
   );
@@ -86,7 +69,7 @@ export function EditCategoryDialog({ category, onClose, onDone }: { category: Ca
         </Field>
         <p className="text-xs text-muted">Renaming changes the name everywhere, including on old tickets. Open tickets get a “Name updated” note on their timeline.</p>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Save" />
+        <DialogActions onClose={onClose} busy={busy} label="Save" />
       </form>
     </Modal>
   );
@@ -106,7 +89,7 @@ export function RenameTopicDialog({ topic, onClose, onDone }: { topic: { id: str
           <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} autoFocus required />
         </Field>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label="Save" />
+        <DialogActions onClose={onClose} busy={busy} label="Save" />
       </form>
     </Modal>
   );
@@ -135,7 +118,7 @@ export function ConfirmDialog({
       <form onSubmit={submit}>
         <div className="space-y-2 text-sm text-muted">{children}</div>
         <ErrorNote message={error} />
-        <Actions onClose={onClose} busy={busy} label={label} danger />
+        <DialogActions onClose={onClose} busy={busy} label={label} danger />
       </form>
     </Modal>
   );

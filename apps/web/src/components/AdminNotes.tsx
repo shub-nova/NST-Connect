@@ -3,6 +3,7 @@
 import { Bell, Megaphone as MegaphoneIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiError, api } from "@/lib/api";
+import { useDismiss } from "@/lib/use-dismiss";
 import type { ReceivedNote, SentNote } from "@/lib/types";
 import { btnCls, btnGhostCls, cardCls, ErrorNote, inputCls, PillSelect, timeAgo } from "./ui";
 
@@ -128,17 +129,7 @@ export function NotesBell({ unread }: { unread: number }) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismiss(open, ref, () => setOpen(false), { escape: true });
 
   async function markSeen(id: string) {
     setNotes((all) => all?.map((n) => (n.id === id ? { ...n, seen: true } : n)) ?? null);
@@ -220,17 +211,7 @@ export function SentNotesBell() {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  useDismiss(open, ref, () => setOpen(false), { escape: true });
 
   return (
     <div className="relative" ref={ref}>
