@@ -2,7 +2,7 @@
 
 Helpdesk and ticketing system for Newton School students. Students raise tickets, each ticket is routed to its category's POC, and a ticket that is not solved within the time limit (2 days by default, set by the admin) escalates automatically up the POC chain (L1 → L2 → L3). Students see only a team label such as "Assigned to Academics team", never an individual POC.
 
-**What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it, and [docs/go-live-checklist.md](docs/go-live-checklist.md) lists what to switch off before real users arrive; `docs/` has the database and ticket-lifecycle diagrams.
+**What is in it:** the student ticket flow (with attachments, reopen, self-close and feedback), the POC queue with bulk actions, automatic escalation, team management with leave, notes from the Super Admin, and analytics for every role. [DEPLOY.md](DEPLOY.md) covers hosting it, and [docs/go-live-checklist.md](docs/go-live-checklist.md) lists what to switch off before real users arrive; `docs/` has the database and ticket-lifecycle diagrams. New here? Read [CONTRIBUTING.md](CONTRIBUTING.md), the [developer guide](docs/developer/README.md) and the [user guides](docs/user-guide/README.md).
 
 ## Repository layout
 
@@ -98,7 +98,7 @@ It should return `{"status":"ok","database":"up"}`. Then open http://localhost:3
 | Student Activities & Campus Life | `activities.l1.1@newtonschool.co` | `activities.l2@newtonschool.co` | `activities.l3@newtonschool.co` |
 | Other (anything not covered above) | `other.l1.1@newtonschool.co` | `other.l2@newtonschool.co` | `other.l3@newtonschool.co` |
 
-Super Admin: `admin@newtonschool.co` (no screens yet; it lands on a holding page).
+Super Admin: `admin@newtonschool.co` (lands on **All teams**; also has Categories and Settings).
 
 ### Logging in as a staff account in development
 
