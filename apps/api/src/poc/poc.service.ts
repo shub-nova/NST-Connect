@@ -2,6 +2,7 @@ import { ConflictException, HttpException, Injectable, NotFoundException } from 
 import { pickLeastLoadedOwner } from '../tickets/routing';
 import { EventType, Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { FINISHED_STATUSES } from '../tickets/ticket-status';
 import { deadlineAfter, getTatHours } from '../settings/tat';
 import { StorageService } from '../storage/storage.service';
 import { STATUS_LABELS } from '../tickets/student-view';
@@ -18,8 +19,6 @@ import {
 } from './queue-query';
 
 
-/** A ticket in one of these is finished: no more replies or status changes. */
-const FINISHED: TicketStatus[] = ['RESOLVED', 'CLOSED'];
 
 /** Statuses from which a POC acknowledging or replying moves the ticket to IN_PROGRESS. */
 const NEEDS_ACK: TicketStatus[] = ['ASSIGNED', 'ESCALATED', 'REOPENED'];
@@ -119,8 +118,8 @@ export class PocService {
     if (!pairs.length) return { open: 0, done: 0 };
     const or = pairs.map((p) => ({ categoryId: p.categoryId, currentLevel: p.level }));
     const [open, done] = await Promise.all([
-      this.prisma.ticket.count({ where: { status: { notIn: FINISHED }, OR: or } }),
-      this.prisma.ticket.count({ where: { status: { in: FINISHED }, OR: or } }),
+      this.prisma.ticket.count({ where: { status: { notIn: FINISHED_STATUSES }, OR: or } }),
+      this.prisma.ticket.count({ where: { status: { in: FINISHED_STATUSES }, OR: or } }),
     ]);
     return { open, done };
   }
@@ -402,7 +401,7 @@ export class PocService {
         select: { id: true, status: true, studentId: true, currentLevel: true, categoryId: true },
       });
       if (!t) throw new NotFoundException('Ticket not found.');
-      if (FINISHED.includes(t.status)) throw new ConflictException('This ticket is already finished.');
+      if (FINISHED_STATUSES.includes(t.status)) throw new ConflictException('This ticket is already finished.');
 
       const changes = await action(tx, t);
       await tx.ticket.update({

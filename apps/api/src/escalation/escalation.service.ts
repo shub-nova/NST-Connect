@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { pickLeastLoadedOwner } from '../tickets/routing';
+import { OWNED_OPEN_STATUSES } from '../tickets/ticket-status';
 import { deadlineAfter, getTatHours } from '../settings/tat';
 
 export interface EscalationRunResult {
@@ -14,7 +15,6 @@ export interface EscalationRunResult {
   warned: number;
 }
 
-const OPEN: TicketStatus[] = ['ASSIGNED', 'IN_PROGRESS', 'ESCALATED', 'REOPENED'];
 /** Safety cap so one run can never loop forever. The next run picks up the rest. */
 const MAX_TICKETS_PER_RUN = 500;
 
@@ -107,7 +107,7 @@ export class EscalationService {
       if (!rows.length) return 'none';
 
       const t = await tx.ticket.findUniqueOrThrow({ where: { id: rows[0].id }, include: { category: true } });
-      if (!OPEN.includes(t.status)) return 'none'; // cannot happen under the lock; defensive
+      if (!OWNED_OPEN_STATUSES.includes(t.status)) return 'none'; // cannot happen under the lock; defensive
 
       // Next level up that actually has someone on duty. Empty levels are skipped.
       let owner = null;

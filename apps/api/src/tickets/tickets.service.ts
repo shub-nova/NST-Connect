@@ -24,7 +24,7 @@ const FINISH_EVENTS = ['RESOLVED', 'CLOSED'] as const;
  * last word, so its decision is final. (Today the top level is L2; the rule follows the
  * category's configured top level, so it keeps working if a level is added.)
  */
-export function canReopen(status: TicketStatus, resolvedLevel: number | null, topLevel: number): boolean {
+function canReopen(status: TicketStatus, resolvedLevel: number | null, topLevel: number): boolean {
   return (status === 'RESOLVED' || status === 'CLOSED') && (resolvedLevel ?? 1) < topLevel;
 }
 

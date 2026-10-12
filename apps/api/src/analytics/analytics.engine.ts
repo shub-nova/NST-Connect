@@ -16,10 +16,10 @@ export interface Scope {
 }
 
 /** Tickets that took 10 or more days are grouped into the last bar. */
-export const MAX_FINISH_DAYS = 10;
+const MAX_FINISH_DAYS = 10;
 
 /** Fewer answers than this and a percentage would be noise, so it is not shown. */
-export const MIN_FEEDBACK_ANSWERS = 5;
+const MIN_FEEDBACK_ANSWERS = 5;
 
 const HOUR = 3600;
 const OPEN_STATUSES = Prisma.sql`('CREATED','ASSIGNED','IN_PROGRESS','ESCALATED','REOPENED')`;

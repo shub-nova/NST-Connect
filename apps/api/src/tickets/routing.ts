@@ -1,4 +1,5 @@
 import type { Prisma } from '../generated/prisma/client';
+import { FINISHED_STATUSES } from './ticket-status';
 
 /**
  * The POC who should receive a ticket at a given level of a category: the least-loaded
@@ -15,7 +16,7 @@ export async function pickLeastLoadedOwner(tx: Prisma.TransactionClient, categor
     by: ['assignedPocId'],
     where: {
       assignedPocId: { in: pool.map((p) => p.userId) },
-      status: { notIn: ['RESOLVED', 'CLOSED'] },
+      status: { notIn: FINISHED_STATUSES },
     },
     _count: { _all: true },
   });

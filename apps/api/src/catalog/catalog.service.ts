@@ -1,13 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { FINISHED_STATUSES } from '../tickets/ticket-status';
 import { missingLevels, STAFFING_WHERE } from './staffing';
 
-/** A ticket in either of these states is finished; anything else is still open. */
-const FINISHED = ['RESOLVED', 'CLOSED'] as const;
-
 /** The same name with different capitals or spaces counts as the same name. */
-export const tidy = (value: string) => value.trim().replace(/\s+/g, ' ');
+const tidy = (value: string) => value.trim().replace(/\s+/g, ' ');
 
 /**
  * The categories students pick from, and the topics (sub-categories) inside each. Only the Super Admin
@@ -40,7 +38,7 @@ export class CatalogService {
           },
         },
       }),
-      this.prisma.ticket.groupBy({ by: ['categoryId'], where: { status: { notIn: [...FINISHED] } }, _count: { _all: true } }),
+      this.prisma.ticket.groupBy({ by: ['categoryId'], where: { status: { notIn: FINISHED_STATUSES } }, _count: { _all: true } }),
       this.prisma.pOCAssignment.groupBy({ by: ['categoryId'], where: { active: true }, _count: { _all: true } }),
     ]);
     const openBy = new Map(open.map((r) => [r.categoryId, r._count._all]));
@@ -108,7 +106,7 @@ export class CatalogService {
   async removeCategory(actorId: string, id: string) {
     const category = await this.category(id);
     if (!category.active) return { id };
-    const open = await this.prisma.ticket.count({ where: { categoryId: id, status: { notIn: [...FINISHED] } } });
+    const open = await this.prisma.ticket.count({ where: { categoryId: id, status: { notIn: FINISHED_STATUSES } } });
     if (open > 0) {
       throw new ConflictException(
         `“${category.name}” still has ${open} open ticket${open === 1 ? '' : 's'}. Remove it once they are solved or closed.`,
@@ -165,7 +163,7 @@ export class CatalogService {
   async removeTopic(actorId: string, id: string) {
     const topic = await this.topic(id);
     if (!topic.active) return { id };
-    const open = await this.prisma.ticket.count({ where: { subCategoryId: id, status: { notIn: [...FINISHED] } } });
+    const open = await this.prisma.ticket.count({ where: { subCategoryId: id, status: { notIn: FINISHED_STATUSES } } });
     if (open > 0) {
       throw new ConflictException(
         `“${topic.name}” still has ${open} open ticket${open === 1 ? '' : 's'}. Remove it once they are solved or closed.`,
@@ -238,7 +236,7 @@ export class CatalogService {
    * many tickets got the note.
    */
   private async noteOnOpenTickets(tx: Prisma.TransactionClient, where: Prisma.TicketWhereInput, note: string) {
-    const open = await tx.ticket.findMany({ where: { ...where, status: { notIn: [...FINISHED] } }, select: { id: true } });
+    const open = await tx.ticket.findMany({ where: { ...where, status: { notIn: FINISHED_STATUSES } }, select: { id: true } });
     if (!open.length) return 0;
     await tx.ticketEvent.createMany({ data: open.map((t) => ({ ticketId: t.id, type: 'RENAMED' as const, note, visibility: 'PUBLIC' as const })) });
     return open.length;

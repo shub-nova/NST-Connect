@@ -32,7 +32,7 @@ const isPlainText = (head: Uint8Array) => {
 };
 
 // SVG is deliberately NOT allowed: it can carry scripts. Executables and archives are not allowed either.
-export const FILE_RULES: Record<string, FileRule> = {
+const FILE_RULES: Record<string, FileRule> = {
   'image/png': { maxBytes: 10 * MB, extensions: ['png'], matches: (h) => startsWith(h, [0x89, 0x50, 0x4e, 0x47]) },
   'image/jpeg': { maxBytes: 10 * MB, extensions: ['jpg', 'jpeg'], matches: (h) => startsWith(h, [0xff, 0xd8, 0xff]) },
   'image/gif': { maxBytes: 10 * MB, extensions: ['gif'], matches: (h) => ascii(h, 'GIF87a') || ascii(h, 'GIF89a') },

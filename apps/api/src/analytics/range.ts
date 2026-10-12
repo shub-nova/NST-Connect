@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 const DAY = 24 * 60 * 60 * 1000;
-export const MAX_RANGE_DAYS = 366;
+const MAX_RANGE_DAYS = 366;
 
 export interface DateRange {
   from: Date;

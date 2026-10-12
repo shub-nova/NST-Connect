@@ -5,6 +5,7 @@ import { MailService } from '../mail/mail.service';
 import { Prisma, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { handOffOpenTickets, type HandoffResult } from './handoff';
+import { FINISHED_STATUSES } from '../tickets/ticket-status';
 
 export interface Actor {
   id: string;
@@ -93,7 +94,7 @@ export class StaffService {
     const names = new Map(below.map((a) => [a.id, a.user.name]));
     const loads = await this.prisma.ticket.groupBy({
       by: ['assignedPocId', 'categoryId'],
-      where: { assignedPocId: { in: people.map((p) => p.userId) }, status: { notIn: ['RESOLVED', 'CLOSED'] } },
+      where: { assignedPocId: { in: people.map((p) => p.userId) }, status: { notIn: FINISHED_STATUSES } },
       _count: { _all: true },
     });
     const open = (a: Assignment) => loads.find((l) => l.assignedPocId === a.userId && l.categoryId === a.categoryId)?._count._all ?? 0;
