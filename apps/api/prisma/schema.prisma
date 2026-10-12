@@ -16,12 +16,6 @@ enum Role {
   SUPER_ADMIN
 }
 
-enum Priority {
-  LOW
-  MEDIUM
-  HIGH
-}
-
 enum TicketStatus {
   CREATED
   ASSIGNED
@@ -45,8 +39,6 @@ enum EventType {
   RESOLVED
   CLOSED
   REOPENED
-  LINKED
-  UNLINKED
   /// A POC's open ticket was handed to someone else (they went on leave, or were removed). Internal only.
   REASSIGNED
   /// The student closed their own ticket. Not a POC outcome, so analytics never count it as Solved or Closed.
@@ -76,10 +68,8 @@ enum ScanStatus {
 enum NotificationType {
   STATUS_CHANGE
   COMMENT
-  MENTION
   ESCALATION
   RESOLVED
-  NUDGE
   NEW_TICKET
   /// To the assigned POC: the 48h limit is close.
   TAT_WARNING
@@ -100,19 +90,19 @@ enum EscalationReason {
 }
 
 model User {
-  id              String    @id @default(uuid()) @db.Uuid
-  email           String    @unique
-  name            String
-  passwordHash    String?   @map("password_hash")
-  role            Role
-  enrollmentId    String?   @map("enrollment_id")
-  emailVerifiedAt DateTime? @map("email_verified_at")
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique
+  name                String
+  passwordHash        String?   @map("password_hash")
+  role                Role
+  enrollmentId        String?   @map("enrollment_id")
+  emailVerifiedAt     DateTime? @map("email_verified_at")
   /// Set when a staff member is removed from their last role. They can no longer log in.
-  deactivatedAt   DateTime? @map("deactivated_at")
+  deactivatedAt       DateTime? @map("deactivated_at")
   /// When a password-reset email was last sent. Another one is not sent for a couple of minutes, so nobody can
   /// flood an inbox by asking again and again.
   passwordResetSentAt DateTime? @map("password_reset_sent_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
 
   pocAssignments POCAssignment[]
   ticketsRaised  Ticket[]           @relation("TicketStudent")
@@ -120,7 +110,6 @@ model User {
   events         TicketEvent[]      @relation("EventActor")
   eventsReceived TicketEvent[]      @relation("EventAssignee")
   comments       Comment[]
-  mentions       CommentMention[]
   attachments    Attachment[]
   notifications  Notification[]
   refreshTokens  RefreshToken[]
@@ -192,7 +181,6 @@ model Ticket {
   categoryId      String       @map("category_id") @db.Uuid
   subCategoryId   String?      @map("sub_category_id") @db.Uuid
   studentId       String       @map("student_id") @db.Uuid
-  priority        Priority     @default(MEDIUM)
   status          TicketStatus @default(CREATED)
   currentLevel    Int          @default(1) @map("current_level")
   resolvedLevel   Int?         @map("resolved_level")
@@ -203,7 +191,6 @@ model Ticket {
   critical        Boolean      @default(false)
   /// Closed by the student themselves (status is CLOSED). It leaves the POC's open queue and is not a POC outcome.
   closedByStudent Boolean      @default(false) @map("closed_by_student")
-  parentTicketId  String?      @map("parent_ticket_id") @db.Uuid
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
   resolvedAt      DateTime?    @map("resolved_at")
@@ -212,8 +199,6 @@ model Ticket {
   subCategory   SubCategory?     @relation(fields: [subCategoryId], references: [id])
   student       User             @relation("TicketStudent", fields: [studentId], references: [id])
   assignedPoc   User?            @relation("TicketAssignedPoc", fields: [assignedPocId], references: [id])
-  parent        Ticket?          @relation("Duplicates", fields: [parentTicketId], references: [id])
-  duplicates    Ticket[]         @relation("Duplicates")
   events        TicketEvent[]
   feedback      TicketFeedback[]
   comments      Comment[]
@@ -223,6 +208,8 @@ model Ticket {
   @@index([status, currentLevel, tatDeadline])
   @@index([studentId, createdAt])
   @@index([categoryId, status])
+  // Who holds what: the least-loaded-POC lookup and every "my tickets" view filter by owner and status.
+  @@index([assignedPocId, status])
   @@map("ticket")
 }
 
@@ -255,35 +242,20 @@ model TicketEvent {
 }
 
 model Comment {
-  id              String     @id @default(uuid()) @db.Uuid
-  ticketId        String     @map("ticket_id") @db.Uuid
-  authorId        String     @map("author_id") @db.Uuid
-  parentCommentId String?    @map("parent_comment_id") @db.Uuid
-  body            String
-  visibility      Visibility @default(PUBLIC)
-  createdAt       DateTime   @default(now()) @map("created_at")
+  id         String     @id @default(uuid()) @db.Uuid
+  ticketId   String     @map("ticket_id") @db.Uuid
+  authorId   String     @map("author_id") @db.Uuid
+  body       String
+  visibility Visibility @default(PUBLIC)
+  createdAt  DateTime   @default(now()) @map("created_at")
 
-  ticket        Ticket           @relation(fields: [ticketId], references: [id])
-  author        User             @relation(fields: [authorId], references: [id])
-  parent        Comment?         @relation("Replies", fields: [parentCommentId], references: [id])
-  replies       Comment[]        @relation("Replies")
-  mentions      CommentMention[]
+  ticket        Ticket         @relation(fields: [ticketId], references: [id])
+  author        User           @relation(fields: [authorId], references: [id])
   attachments   Attachment[]
   notifications Notification[]
 
   @@index([ticketId, createdAt])
   @@map("comment")
-}
-
-model CommentMention {
-  commentId       String @map("comment_id") @db.Uuid
-  mentionedUserId String @map("mentioned_user_id") @db.Uuid
-
-  comment Comment @relation(fields: [commentId], references: [id])
-  user    User    @relation(fields: [mentionedUserId], references: [id])
-
-  @@id([commentId, mentionedUserId])
-  @@map("comment_mention")
 }
 
 model Attachment {

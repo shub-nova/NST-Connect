@@ -165,4 +165,9 @@ Emails to `@adypu.edu.in` inboxes may land in spam at first, because the sender 
 
 ## Updating later
 
-Push to `main`. Both projects redeploy on their own. If the change adds database tables, run `db:deploy` (step 1.4) first.
+Push to `main`. Both projects redeploy on their own. If the change includes a database migration, the **order matters**:
+
+- **A migration that only ADDS something** (a table, a column, an index): run `db:deploy` **before** you push, so the new code finds what it needs. Old code simply ignores the addition.
+- **A migration that REMOVES something** (a column, a table): push and wait for both deployments to say **Ready** **first**, then run `db:deploy`. The code that is live before the push may still read what is about to be removed, and would fail the moment it disappears.
+- Before any migration that removes something, make a **safety copy**: in Neon, open the project, then **Branches → Create branch** from the main branch. It takes seconds and gives you an exact copy to return to.
+- Run it with the **direct** connection string (no `-pooler`), and check that the output ends with "All migrations have been successfully applied".

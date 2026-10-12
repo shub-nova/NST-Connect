@@ -48,7 +48,6 @@ erDiagram
         uuid category_id FK
         uuid sub_category_id FK "what exactly the issue is about"
         uuid student_id FK
-        enum priority "LOW, MEDIUM, HIGH"
         enum status "CREATED, ASSIGNED, IN_PROGRESS, ESCALATED, RESOLVED (shown as Solved), CLOSED, REOPENED"
         int current_level
         int resolved_level "set on resolve, used on reopen"
@@ -57,7 +56,6 @@ erDiagram
         timestamp tat_warned_at "when the 12-hours-left warning went out for this deadline"
         boolean critical "the top level did not solve it within the time limit"
         boolean closed_by_student "the student closed it themselves; not a POC outcome"
-        uuid parent_ticket_id FK "reserved for duplicate linking; not used yet"
         timestamp created_at
         timestamp updated_at
         timestamp resolved_at
@@ -65,7 +63,7 @@ erDiagram
     TICKET_EVENT {
         uuid id PK
         uuid ticket_id FK
-        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, CLOSED, REOPENED, LINKED, UNLINKED, REASSIGNED, CLOSED_BY_STUDENT, RENAMED"
+        enum type "CREATED, ASSIGNED, COMMENTED, STATUS_CHANGED, ESCALATED, TAT_BREACHED, NUDGED, RESOLVED, CLOSED, REOPENED, REASSIGNED, CLOSED_BY_STUDENT, RENAMED"
         uuid actor_id FK "null for system"
         uuid assignee_id FK "who the ticket went to (ASSIGNED, ESCALATED, REOPENED)"
         enum from_status
@@ -93,14 +91,9 @@ erDiagram
         uuid id PK
         uuid ticket_id FK
         uuid author_id FK
-        uuid parent_comment_id FK "nullable, threading"
         text body
         enum visibility "PUBLIC, INTERNAL"
         timestamp created_at
-    }
-    COMMENT_MENTION {
-        uuid comment_id FK
-        uuid mentioned_user_id FK
     }
     ATTACHMENT {
         uuid id PK
@@ -117,7 +110,7 @@ erDiagram
     NOTIFICATION {
         uuid id PK
         uuid user_id FK
-        enum type "STATUS_CHANGE, COMMENT, MENTION, ESCALATION, RESOLVED, NUDGE, NEW_TICKET, TAT_WARNING, TAT_MISSED, CRITICAL"
+        enum type "STATUS_CHANGE, COMMENT, ESCALATION, RESOLVED, NEW_TICKET, TAT_WARNING, TAT_MISSED, CRITICAL"
         uuid ticket_id FK
         uuid comment_id FK "nullable, deep link"
         timestamp read_at
@@ -172,7 +165,6 @@ erDiagram
     CATEGORY ||--o{ TICKET : "classifies"
     SUB_CATEGORY |o--o{ TICKET : "narrows"
     USER |o--o{ TICKET : "currently assigned (POC)"
-    TICKET |o--o{ TICKET : "master of duplicates"
     TICKET ||--o{ TICKET_EVENT : "audit log"
     TICKET ||--o{ TICKET_FEEDBACK : "student feedback"
     TICKET_EVENT ||--o| TICKET_FEEDBACK : "answers"
@@ -180,9 +172,6 @@ erDiagram
     USER |o--o{ TICKET_EVENT : "received"
     TICKET ||--o{ COMMENT : "thread"
     USER ||--o{ COMMENT : "writes"
-    COMMENT |o--o{ COMMENT : "replies"
-    COMMENT ||--o{ COMMENT_MENTION : "tags"
-    USER ||--o{ COMMENT_MENTION : "is tagged"
     TICKET ||--o{ ATTACHMENT : "has"
     USER ||--o{ ATTACHMENT : "uploads"
     USER ||--o{ NOTIFICATION : "receives"
@@ -215,20 +204,21 @@ erDiagram
 | `JOB_HEARTBEAT` | The escalation endpoint records each run, so a missed schedule can be seen. |
 | Escalation is driven by `tat_deadline` and `tat_warned_at` | A scheduled call finds open tickets past their deadline and moves them up; the warning is sent once per deadline. |
 
-## Reserved, not used yet
+## Kept for later, not used yet
 
-These columns exist but no feature uses them today. They are kept so adding the feature later needs no data migration:
+These exist but no feature uses them today:
 
-- `ticket.parent_ticket_id` and the `LINKED` / `UNLINKED` events: duplicate-ticket linking.
-- `ticket.priority`: students never set or see it (default MEDIUM).
 - `attachment.scan_status`: an attachment becomes CLEAN once the upload is confirmed. There is no antivirus scan yet.
-- `notification.emailed_at`: reserved for an email outbox.
+- `notification` (all of it, including `read_at` and `emailed_at`): rows are written for new tickets, replies, escalations and so on, but nothing reads or sends them yet. They are the starting point for alerts.
+
+Removed on 2026-10-13 because nothing used them: the `comment_mention` table, `comment.parent_comment_id`, `ticket.parent_ticket_id`, `ticket.priority` (and its enum), the `LINKED`, `UNLINKED` event types and the `MENTION`, `NUDGE` notification types.
 
 ## Indexes
 
 - `ticket(status, current_level, tat_deadline)` for the escalation job and POC queues
 - `ticket(student_id, created_at)` for "My tickets"
 - `ticket(category_id, status)` for queues and analytics
+- `ticket(assigned_poc_id, status)` for "who holds what": the least-loaded-POC lookup and the per-person views
 - `ticket_event(ticket_id, created_at)` for timelines, `ticket_event(created_at)` for analytics date ranges
 - `comment(ticket_id, created_at)`, `notification(user_id, read_at)`
 - `ticket_feedback(category_id, created_at)`, `(finished_by_id, created_at)`, `(ticket_id)` for satisfaction analytics

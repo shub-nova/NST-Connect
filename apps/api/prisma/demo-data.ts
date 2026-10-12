@@ -410,7 +410,6 @@ async function clean(prisma: PrismaClient) {
   if (!studentIds.length) return cleanStaff(prisma);
   const tickets = { ticket: { studentId: { in: studentIds } } };
   await prisma.notification.deleteMany({ where: { OR: [{ userId: { in: studentIds } }, tickets] } });
-  await prisma.commentMention.deleteMany({ where: { comment: tickets } });
   await prisma.comment.deleteMany({ where: tickets });
   await prisma.attachment.deleteMany({ where: tickets });
   await prisma.ticketFeedback.deleteMany({ where: tickets });

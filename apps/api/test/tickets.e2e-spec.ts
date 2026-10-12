@@ -180,7 +180,7 @@ describe('Tickets (e2e)', () => {
     const res = await newTicket(studentToken, { priority: 'HIGH' }).expect(201);
     expect(res.body).not.toHaveProperty('priority');
     const row = await prismaOf(app).ticket.findUniqueOrThrow({ where: { id: res.body.id } });
-    expect(row.priority).toBe('MEDIUM'); // the default, not what the student sent
+    expect(row).not.toHaveProperty('priority'); // there is no priority column at all: what the student sent is simply dropped
 
     const list = await request(app.getHttpServer()).get('/tickets').set(auth(studentToken)).expect(200);
     expect(JSON.stringify(list.body)).not.toContain('priority');
