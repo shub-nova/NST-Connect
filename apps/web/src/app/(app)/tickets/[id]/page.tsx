@@ -162,7 +162,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
 
       {closing && (
         <Modal title="Close this ticket?" onClose={() => (closeBusy ? undefined : setClosing(false))}>
-          <p className="text-sm text-muted">Your team will stop working on it. You can reopen it later if you still need help.</p>
+          <p className="text-sm text-muted">Our team will stop working on it. You can reopen it later if you still need help.</p>
           <div className="mt-4">
             <ErrorNote message={closeError} />
           </div>
