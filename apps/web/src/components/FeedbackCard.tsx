@@ -52,7 +52,7 @@ export default function FeedbackCard({ ticketId, feedback, canReopen, onSaved }:
               You chose “{choice.label}”.
               {feedback.rating === "NOT_SATISFIED" && canReopen ? " You can reopen this ticket below." : ""}
             </p>
-            {feedback.comment && <p className="mt-1 whitespace-pre-wrap text-sm text-ink">“{feedback.comment}”</p>}
+            {feedback.comment && <p className="wrap-anywhere mt-1 whitespace-pre-wrap text-sm text-ink">“{feedback.comment}”</p>}
           </div>
           {feedback.canChange && (
             <button onClick={() => setEditing(true)} className="text-sm font-semibold text-brand hover:underline">

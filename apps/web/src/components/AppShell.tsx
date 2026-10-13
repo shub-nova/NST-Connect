@@ -110,16 +110,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-10 border-b border-line bg-white">
-        <div className="flex h-16 items-center justify-between gap-6 px-4 sm:h-[68px] sm:px-6">
-          <div className="flex items-center gap-4 sm:gap-8">
+        <div className="flex h-16 items-center justify-between gap-3 px-4 sm:h-[68px] sm:gap-6 sm:px-6">
+          <div className="flex min-w-0 items-center gap-4 sm:gap-8">
             <Link
               href={home}
-              className="flex items-center gap-2.5 text-[15px] font-semibold text-ink"
+              className="flex shrink-0 items-center gap-2.5 text-[15px] font-semibold text-ink"
             >
               <LogoMark />
               <span className="hidden sm:inline">NST Connect</span>
             </Link>
-            <nav className="flex items-center gap-4 overflow-x-auto whitespace-nowrap sm:gap-7" aria-label="Main">
+            <nav className="flex min-w-0 items-center gap-4 overflow-x-auto whitespace-nowrap sm:gap-7" aria-label="Main">
               {links.map((l) => (
                 <Link
                   key={l.href}
@@ -133,7 +133,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1.5">
           {role === "POC" && <NotesBell unread={access?.unreadNotes ?? 0} />}
           {role === "SUPER_ADMIN" && <SentNotesBell />}
           <div className="relative" ref={menuRef}>

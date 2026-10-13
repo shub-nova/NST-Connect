@@ -108,7 +108,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
           <div className="flex min-w-0 items-start gap-4">
             <SubCategoryIcon category={t.category.shortName || t.category.name} subCategory={t.subCategory?.name} size="lg" />
             <div className="min-w-0">
-              <h1 className="text-xl font-bold text-ink sm:text-2xl">{t.title}</h1>
+              <h1 className="wrap-anywhere text-xl font-bold text-ink sm:text-2xl">{t.title}</h1>
               <p className="mt-1 text-sm text-muted">
                 {t.category.shortName}
                 {t.subCategory ? ` › ${t.subCategory.name}` : ""}
@@ -121,7 +121,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
           <StatusBadge status={t.status} label={t.statusLabel} />
         </div>
 
-        <p className="whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{t.description}</p>
+        <p className="wrap-anywhere whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{t.description}</p>
 
         {t.attachments.length > 0 && (
           <div className="space-y-3 border-t border-line pt-5">
@@ -245,7 +245,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
               <span className="absolute -left-[37px] top-1 h-3.5 w-3.5 rounded-full bg-brand ring-4 ring-white" />
               <p className="text-[15px] font-semibold text-ink">{e.label}</p>
               {e.message && (
-                <p className="mt-1.5 whitespace-pre-wrap rounded-lg bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink">
+                <p className="wrap-anywhere mt-1.5 whitespace-pre-wrap rounded-lg bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink">
                   {e.message}
                 </p>
               )}

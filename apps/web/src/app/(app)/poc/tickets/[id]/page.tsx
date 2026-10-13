@@ -126,7 +126,7 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
           <div className="flex min-w-0 items-center gap-4">
             <SubCategoryIcon category={ticket.category.shortName || ticket.category.name} subCategory={ticket.subCategory?.name} size="lg" />
             <div className="min-w-0">
-              <h1 className="text-xl font-bold leading-snug text-ink sm:text-2xl">{ticket.title}</h1>
+              <h1 className="wrap-anywhere text-xl font-bold leading-snug text-ink sm:text-2xl">{ticket.title}</h1>
               <p className="mt-0.5 text-sm text-muted">
                 {ticket.category.shortName || ticket.category.name}
                 {ticket.subCategory ? ` · ${ticket.subCategory.name}` : ""}
@@ -157,7 +157,7 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
           )}
         </dl>
 
-        <p className="whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{ticket.description}</p>
+        <p className="wrap-anywhere whitespace-pre-wrap border-t border-line pt-5 text-[15px] leading-relaxed text-ink">{ticket.description}</p>
 
         {ticket.attachments.length > 0 && (
           <div className="space-y-3 border-t border-line pt-5">
@@ -184,13 +184,13 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
                       {formatDate(item.at)}
                     </span>
                   </p>
-                  <p className="mt-1.5 whitespace-pre-wrap rounded-lg bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink">{item.body}</p>
+                  <p className="wrap-anywhere mt-1.5 whitespace-pre-wrap rounded-lg bg-surface px-3.5 py-2.5 text-[15px] leading-relaxed text-ink">{item.body}</p>
                 </>
               ) : (
                 <>
                   <p className="text-[15px] font-medium text-ink">{item.label}</p>
                   {item.note && (
-                    <p className="mt-1.5 whitespace-pre-wrap rounded-lg bg-green-50 px-3.5 py-2.5 text-[15px] leading-relaxed text-green-900">{item.note}</p>
+                    <p className="wrap-anywhere mt-1.5 whitespace-pre-wrap rounded-lg bg-green-50 px-3.5 py-2.5 text-[15px] leading-relaxed text-green-900">{item.note}</p>
                   )}
                   <p className="mt-0.5 text-sm text-muted">{formatDate(item.at)}</p>
                 </>

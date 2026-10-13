@@ -170,7 +170,7 @@ export function NotesBell({ unread }: { unread: number }) {
                   <div className="flex items-start gap-3">
                     {!n.seen && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="Unread" />}
                     <div className="min-w-0 flex-1">
-                      <p className="whitespace-pre-wrap text-sm text-ink">{n.body}</p>
+                      <p className="wrap-anywhere whitespace-pre-wrap text-sm text-ink">{n.body}</p>
                       <p className="mt-1 text-xs text-muted">
                         {n.context ? `${n.context} · ` : ""}
                         {timeAgo(n.createdAt)}
