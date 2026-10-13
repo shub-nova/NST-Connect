@@ -46,3 +46,14 @@ export function checkFile(file: File): CheckedFile {
   else if (file.size > rule.maxBytes) error = `Too large (limit ${rule.maxBytes / MB} MB).`;
   return { file, mimeType, error };
 }
+
+/** How an attachment can be shown inside the page, or null when a browser cannot show it (Word, Excel, PowerPoint). */
+export type PreviewKind = "image" | "pdf" | "video" | "text";
+
+export function previewKind(mimeType: string): PreviewKind | null {
+  if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(mimeType)) return "image";
+  if (mimeType === "application/pdf") return "pdf";
+  if (["video/mp4", "video/webm", "video/quicktime"].includes(mimeType)) return "video";
+  if (mimeType === "text/plain" || mimeType === "text/csv") return "text";
+  return null;
+}

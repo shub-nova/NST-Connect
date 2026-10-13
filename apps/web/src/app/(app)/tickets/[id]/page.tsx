@@ -4,9 +4,9 @@ import FeedbackCard from "@/components/FeedbackCard";
 import { CircleCheck, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { AttachmentList, BackLink, Modal, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
+import TicketAttachments from "@/components/AttachmentViewer";
+import { BackLink, Modal, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { formatSize } from "@/lib/files";
 import { isFinished } from "@/lib/types";
 import type { TicketDetail } from "@/lib/types";
 
@@ -20,7 +20,6 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
   // In this Next.js version, route params arrive as a Promise; `use` unwraps it.
   const { id } = use(params);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
   const [reopening, setReopening] = useState(false);
   const [comment, setComment] = useState("");
   const [showErrors, setShowErrors] = useState(false);
@@ -87,16 +86,6 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
     }
   }
 
-  async function download(attachmentId: string) {
-    setDownloadError(null);
-    try {
-      const { url } = await api<{ url: string }>(`/attachments/${attachmentId}/download`);
-      window.open(url, "_blank", "noopener");
-    } catch {
-      setDownloadError("Could not download that file.");
-    }
-  }
-
   if (!loaded || loaded.id !== id) return <p className="text-sm text-muted">Loading ticket…</p>;
   if (!loaded.ticket) {
     return (
@@ -137,8 +126,7 @@ export default function TicketDetailPage({ params }: PageProps<"/tickets/[id]">)
         {t.attachments.length > 0 && (
           <div className="space-y-3 border-t border-line pt-5">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Attachments · {t.attachments.length}</h2>
-            <ErrorNote message={downloadError} />
-            <AttachmentList items={t.attachments} onDownload={download} size={formatSize} />
+            <TicketAttachments items={t.attachments} base="/attachments" />
           </div>
         )}
       </section>

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
-import { AttachmentList, BackLink, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
+import TicketAttachments from "@/components/AttachmentViewer";
+import { BackLink, SubCategoryIcon, ErrorNote, StatusBadge, btnCls, btnGhostCls, formatDate, isPast, timeAgo } from "@/components/ui";
 import { ApiError, api } from "@/lib/api";
-import { formatSize } from "@/lib/files";
 import type { CloseOutcome, PocTicketDetail } from "@/lib/types";
 import { isFinished } from "@/lib/types";
 
@@ -81,15 +81,6 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
       setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
     } finally {
       setBusy(null);
-    }
-  }
-
-  async function download(attachmentId: string) {
-    try {
-      const { url } = await api<{ url: string }>(`/poc/attachments/${attachmentId}/download`);
-      window.open(url, "_blank", "noopener");
-    } catch {
-      setError("Could not download that file.");
     }
   }
 
@@ -171,7 +162,7 @@ export default function PocTicketPage({ params }: PageProps<"/poc/tickets/[id]">
         {ticket.attachments.length > 0 && (
           <div className="space-y-3 border-t border-line pt-5">
             <h2 className="text-xs font-medium uppercase tracking-wide text-muted">Attachments · {ticket.attachments.length}</h2>
-            <AttachmentList items={ticket.attachments} onDownload={download} size={formatSize} />
+            <TicketAttachments items={ticket.attachments} base="/poc/attachments" />
           </div>
         )}
       </section>

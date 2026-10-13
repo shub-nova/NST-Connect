@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronDown, ChevronLeft, Download, FileSpreadsheet, FileText, Film, Image as ImageIcon, Presentation, type LucideIcon } from "lucide-react";
 import { useEffect } from "react";
+import { previewKind } from "@/lib/files";
 import type { TicketStatus } from "@/lib/types";
 
 export const inputCls =
@@ -291,28 +292,52 @@ function fileLook(mimeType: string): { icon: LucideIcon; tint: string } {
   return { icon: FileText, tint: "bg-slate-100 text-slate-600" };
 }
 
-/** The files on a ticket: one card each, the whole card downloads. */
-export function AttachmentList({ items, onDownload, size }: { items: { id: string; fileName: string; mimeType: string; sizeBytes: number }[]; onDownload: (id: string) => void; size: (bytes: number) => string }) {
+/**
+ * The files on a ticket: one card each. A file a browser can show (picture, PDF, video, text) opens in the viewer when the
+ * card is clicked; the download button on the right always downloads. Other files download when the card is clicked.
+ */
+export function AttachmentList({
+  items,
+  onDownload,
+  onView,
+  size,
+}: {
+  items: { id: string; fileName: string; mimeType: string; sizeBytes: number }[];
+  onDownload: (id: string) => void;
+  onView?: (item: { id: string; fileName: string; mimeType: string; sizeBytes: number }) => void;
+  size: (bytes: number) => string;
+}) {
   return (
     <ul className="grid gap-2.5 sm:grid-cols-2">
       {items.map((a) => {
         const look = fileLook(a.mimeType);
         const Glyph = look.icon;
+        const viewable = !!onView && previewKind(a.mimeType) !== null;
         return (
-          <li key={a.id}>
+          <li key={a.id} className="group flex items-stretch overflow-hidden rounded-xl border border-line bg-white transition hover:border-brand hover:shadow-sm">
             <button
-              onClick={() => onDownload(a.id)}
-              title={`Download ${a.fileName}`}
-              className="group flex w-full items-center gap-3 rounded-xl border border-line bg-white p-3 text-left transition hover:border-brand hover:shadow-sm"
+              onClick={() => (viewable ? onView(a) : onDownload(a.id))}
+              title={viewable ? `View ${a.fileName}` : `Download ${a.fileName}`}
+              className="flex min-w-0 flex-1 items-center gap-3 p-3 text-left"
             >
               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${look.tint}`}>
                 <Glyph className="h-5 w-5" strokeWidth={2} aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium text-ink">{a.fileName}</span>
-                <span className="block text-xs text-muted">{size(a.sizeBytes)}</span>
+                <span className="block text-xs text-muted">
+                  {size(a.sizeBytes)}
+                  {viewable ? " · Click to view" : ""}
+                </span>
               </span>
-              <Download className="h-4 w-4 shrink-0 text-muted transition group-hover:text-brand" strokeWidth={2} aria-label="Download" />
+            </button>
+            <button
+              onClick={() => onDownload(a.id)}
+              aria-label={`Download ${a.fileName}`}
+              title="Download"
+              className="flex w-12 shrink-0 items-center justify-center border-l border-line/70 text-muted transition hover:bg-surface hover:text-brand"
+            >
+              <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             </button>
           </li>
         );
