@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { describeDomains, parseDomains } from '../auth/email-domains';
+import { signInvite } from '../auth/invite';
 import { MailService } from '../mail/mail.service';
 import { Prisma, type Role } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,6 +34,7 @@ export class StaffService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly jwt: JwtService,
   ) {}
 
   // ---- who can manage whom ----------------------------------------------------------------
@@ -198,7 +201,7 @@ export class StaffService {
       result.user.passwordHash ? `You were added to ${where}` : `You are invited to NST Connect · ${where}`,
       result.user.passwordHash
         ? `You have been added as L${input.level} for ${category.shortName || category.name}.\n\nOpen your queue: ${web}/poc`
-        : `You have been invited to NST Connect as L${input.level} for ${category.shortName || category.name}.\n\nCreate your account with this email address: ${web}/register`,
+        : `You have been invited to NST Connect as L${input.level} for ${category.shortName || category.name}.\n\nCreate your account with this link (it only works for this email address):\n${await this.inviteLink(email)}`,
     );
     return this.shape(result);
   }
@@ -320,13 +323,18 @@ export class StaffService {
 
   // ---- invites ----------------------------------------------------------------------------
 
+  /** The sign-up link in an invitation. It names the invited address, so only that address can use it. */
+  private async inviteLink(email: string): Promise<string> {
+    return `${this.config.getOrThrow<string>('WEB_URL')}/register?invite=${await signInvite(this.jwt, email)}`;
+  }
+
   async resendInvite(actor: Actor, id: string) {
     const target = await this.inReach(actor, id);
     if (target.user.passwordHash !== null) throw new BadRequestException('This person has already registered.');
     await this.mail.send(
       target.user.email,
       `You are invited to NST Connect · ${target.category.shortName || target.category.name} (L${target.level})`,
-      `You have been invited to NST Connect as L${target.level}.\n\nCreate your account with this email address: ${this.config.getOrThrow<string>('WEB_URL')}/register`,
+      `You have been invited to NST Connect as L${target.level}.\n\nCreate your account with this link (it only works for this email address):\n${await this.inviteLink(target.user.email)}`,
     );
     await this.prisma.staffAudit.create({
       data: { actorId: actor.id, action: 'INVITE_SENT', targetUserId: target.userId, categoryId: target.categoryId, summary: `Re-sent the invite to ${target.user.name}` },

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -14,6 +15,7 @@ import { Role, User } from '../generated/prisma/client';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { classifyEmail, describeDomains, overlappingDomains, parseDomains, type EmailKind } from './email-domains';
+import { readInvite } from './invite';
 
 
 export interface PublicUser {
@@ -86,8 +88,28 @@ export class AuthService implements OnModuleInit {
     return classifyEmail(email, this.studentDomains(), this.staffDomains());
   }
 
-  async register(rawEmail: string, name: string, password: string): Promise<void> {
+  /**
+   * What a staff invitation link is for: the address it was sent to, so the sign-up page can show it and lock it.
+   * Works for an account that has not set a password yet; one that has is told to log in.
+   */
+  async inviteDetails(token: string): Promise<{ email: string; name: string }> {
+    const invalid = () => new BadRequestException('This invitation link is invalid or has expired. Ask your team lead to send a new one.');
+    const email = await readInvite(this.jwt, token);
+    if (!email) throw invalid();
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || user.role !== Role.POC || user.deactivatedAt) throw invalid();
+    if (user.passwordHash) throw new ConflictException('This invitation was already used. Log in instead.');
+    return { email: user.email, name: user.name };
+  }
+
+  async register(rawEmail: string, name: string, password: string, invite?: string): Promise<void> {
     const email = rawEmail.trim().toLowerCase();
+    if (invite) {
+      // An invitation is for one address. Registering with any other would leave the invited person without access.
+      const invited = await readInvite(this.jwt, invite);
+      if (!invited) throw new BadRequestException('This invitation link is invalid or has expired. Ask your team lead to send a new one.');
+      if (invited !== email) throw new BadRequestException('This invitation was sent to a different email address. Use the address the invitation was sent to.');
+    }
     const kind = this.classifyEmail(email);
     if (!kind) {
       throw new BadRequestException(

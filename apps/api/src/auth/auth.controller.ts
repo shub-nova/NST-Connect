@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
@@ -14,12 +14,15 @@ const registerSchema = z.object({
   email: z.string().trim().email().max(254),
   name: z.string().trim().min(2).max(100),
   password: z.string().min(10, 'Use at least 10 characters').max(128),
+  /** The token from a staff invitation link: it ties the sign-up to the address that was invited. */
+  invite: z.string().min(10).max(2000).optional(),
 });
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(1).max(128),
 });
 const verifySchema = z.object({ token: z.string().min(10).max(2000) });
+const inviteQuerySchema = z.object({ token: z.string().min(10).max(2000) });
 const forgotSchema = z.object({ email: z.string().trim().email().max(254) });
 const resetSchema = z.object({
   token: z.string().min(10).max(2000),
@@ -39,8 +42,16 @@ export class AuthController {
   @HttpCode(202)
   async register(@Body() body: unknown) {
     const dto = parseOrThrow(registerSchema, body);
-    await this.auth.register(dto.email, dto.name, dto.password);
+    await this.auth.register(dto.email, dto.name, dto.password, dto.invite);
     return { message: 'If this address is eligible, a verification email is on its way.' };
+  }
+
+  /** Used by the sign-up page to show (and lock) the address a staff invitation was sent to. */
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('invite')
+  invite(@Query() query: unknown) {
+    return this.auth.inviteDetails(parseOrThrow(inviteQuerySchema, query).token);
   }
 
   @Public()
