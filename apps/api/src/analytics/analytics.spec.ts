@@ -25,6 +25,14 @@ describe('topTerms', () => {
 });
 
 describe('resolveRange', () => {
+  it('refuses days that do not exist instead of moving them into the next month', () => {
+    for (const bad of ['2026-02-30', '2026-02-31', '2026-04-31', '2026-02-29', '2026-13-01', '2026-00-10', '2026-10-32']) {
+      expect(() => resolveRange(bad, '2026-12-31')).toThrow();
+      expect(() => resolveRange('2026-01-01', bad)).toThrow();
+    }
+    expect(resolveRange('2028-02-29', '2028-03-01').days).toBe(2); // a real leap day is fine
+  });
+
   const now = new Date('2026-10-07T10:00:00Z');
 
   it('defaults to the last 30 days including today', () => {

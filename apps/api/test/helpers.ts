@@ -66,3 +66,28 @@ export async function loginAsPoc(app: INestApplication, email: string) {
   await prisma.user.update({ where: { email }, data: { passwordHash: null, emailVerifiedAt: null } });
   return registerAndLogin(app, email, 'POC User');
 }
+
+/**
+ * For specs that create a lot of data: call it at the start, and run the function it returns at the end. It removes
+ * what was created in between (tickets and their history, notes, audit entries, notification rows, setting changes,
+ * and the "Catalog Test" categories), so later specs, which count and list such things, start from a clean slate.
+ */
+export function startCleanup(app: INestApplication): () => Promise<void> {
+  const startedAt = new Date();
+  return async () => {
+    const prisma = prismaOf(app);
+    const ids = (await prisma.ticket.findMany({ where: { createdAt: { gte: startedAt } }, select: { id: true } })).map((t) => t.id);
+    await prisma.ticketFeedback.deleteMany({ where: { ticketId: { in: ids } } });
+    await prisma.attachment.deleteMany({ where: { ticketId: { in: ids } } });
+    await prisma.comment.deleteMany({ where: { ticketId: { in: ids } } });
+    await prisma.notification.deleteMany({ where: { OR: [{ ticketId: { in: ids } }, { createdAt: { gte: startedAt } }] } });
+    await prisma.ticketEvent.deleteMany({ where: { ticketId: { in: ids } } });
+    await prisma.ticket.deleteMany({ where: { id: { in: ids } } });
+    await prisma.adminNote.deleteMany({ where: { createdAt: { gte: startedAt } } });
+    await prisma.staffAudit.deleteMany({ where: { createdAt: { gte: startedAt } } });
+    await prisma.appSetting.deleteMany({});
+    const categories = await prisma.category.findMany({ where: { name: { startsWith: 'Catalog Test ' } }, select: { id: true } });
+    await prisma.subCategory.deleteMany({ where: { categoryId: { in: categories.map((c) => c.id) } } });
+    await prisma.category.deleteMany({ where: { id: { in: categories.map((c) => c.id) } } });
+  };
+}

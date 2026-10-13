@@ -101,8 +101,12 @@ describe('Tickets (e2e)', () => {
     // The seed has one L1 per category, so this test adds a temporary second one.
     const prisma = prismaOf(app);
     const email = `balance.${Date.now().toString(36)}@newtonschool.co`;
-    const extra = await prisma.user.create({ data: { email, name: 'Balance Test L1', role: 'POC' } });
+    // Both L1s count as registered (have an account): people who have not registered yet are only used as a last resort,
+    // which has its own test. Original values are put back afterwards.
+    const extra = await prisma.user.create({ data: { email, name: 'Balance Test L1', role: 'POC', passwordHash: 'placeholder-not-a-real-hash' } });
     await prisma.pOCAssignment.create({ data: { userId: extra.id, categoryId: academicsId, level: 1 } });
+    const seeded = await prisma.user.findMany({ where: { id: { not: extra.id }, pocAssignments: { some: { categoryId: academicsId, level: 1, active: true } } }, select: { id: true, passwordHash: true } });
+    await prisma.user.updateMany({ where: { id: { in: seeded.map((u) => u.id) } }, data: { passwordHash: 'placeholder-not-a-real-hash' } });
     try {
       const openLoad = async () => {
         const pool = await prisma.pOCAssignment.findMany({ where: { categoryId: academicsId, level: 1, active: true } });
@@ -129,6 +133,7 @@ describe('Tickets (e2e)', () => {
       }
       expect(toExtra).toBeGreaterThan(0); // the new POC really received tickets
     } finally {
+      for (const u of seeded) await prisma.user.update({ where: { id: u.id }, data: { passwordHash: u.passwordHash } });
       // Leave no trace: hand their tickets back, then remove the account.
       await prisma.ticket.updateMany({ where: { assignedPocId: extra.id }, data: { assignedPocId: null } });
       await prisma.notification.deleteMany({ where: { userId: extra.id } });

@@ -227,7 +227,9 @@ export class AuthService implements OnModuleInit {
       data: { passwordHash, passwordResetSentAt: null },
     });
     if (changed.count !== 1) throw invalid();
-    await this.prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    // Every token of the account, including ones rotated a moment ago, is marked with the epoch: these sessions must stop
+    // working immediately, with no grace window for racing requests.
+    await this.prisma.refreshToken.updateMany({ where: { userId: user.id }, data: { revokedAt: new Date(0) } });
   }
 
   async login(rawEmail: string, password: string): Promise<AuthResult> {
@@ -254,6 +256,8 @@ export class AuthService implements OnModuleInit {
     if (!record) throw new UnauthorizedException();
 
     if (record.revokedAt) {
+      // Logged out (or already treated as stolen): no grace window, and nothing else to revoke.
+      if (record.revokedAt.getTime() === 0) throw new UnauthorizedException();
       // Two requests that race (two tabs, a double fire) can present the same token a
       // moment apart. Within a short grace window that is a race, not theft.
       const withinGrace = Date.now() - record.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS;
@@ -276,9 +280,17 @@ export class AuthService implements OnModuleInit {
 
   async logout(rawToken: string | undefined): Promise<void> {
     if (!rawToken) return;
+    // Marked with the epoch, not "now": a rotated token gets a short grace window for racing requests, but a token
+    // that was logged out must stop working immediately. A token rotated just before the logout (its predecessor) must
+    // not be able to bring the session back either, so recently rotated tokens of this account are ended too.
+    const record = await this.prisma.refreshToken.findUnique({ where: { tokenHash: sha256(rawToken) } });
+    if (!record) return;
     await this.prisma.refreshToken.updateMany({
-      where: { tokenHash: sha256(rawToken), revokedAt: null },
-      data: { revokedAt: new Date() },
+      where: {
+        userId: record.userId,
+        OR: [{ id: record.id, revokedAt: null }, { revokedAt: { gt: new Date(Date.now() - REFRESH_REUSE_GRACE_MS) } }],
+      },
+      data: { revokedAt: new Date(0) },
     });
   }
 

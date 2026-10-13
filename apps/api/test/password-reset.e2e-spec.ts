@@ -75,6 +75,21 @@ describe('Forgot password (e2e)', () => {
     expect(await prisma().refreshToken.count({ where: { userId: user.id, revokedAt: null } })).toBe(1); // only the login just made
   });
 
+  it('an old session cannot be refreshed after a reset, not even straight afterwards', async () => {
+    const email = uniqueStudentEmail('oldsession');
+    await registerAndLogin(app, email);
+    const session = await login(email, PASSWORD).expect(200);
+    const cookie = (session.headers['set-cookie'] as unknown as string[]).map((c) => c.split(';')[0]).join('; ');
+    await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', cookie).expect(200); // alive before the reset
+    const live = (await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', cookie)).headers['set-cookie'] as unknown as string[] | undefined;
+    const latest = (live ?? (session.headers['set-cookie'] as unknown as string[])).map((c) => c.split(';')[0]).join('; ');
+
+    await forgot(email).expect(202);
+    await reset(await resetTokenFor(email), 'another-new-password-1').expect(200);
+    await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', latest).expect(401);
+    await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', cookie).expect(401);
+  });
+
   it('works only once', async () => {
     const email = uniqueStudentEmail('once');
     await registerAndLogin(app, email);

@@ -12,7 +12,11 @@ const topicSchema = z.string().trim().min(3, 'A topic needs at least 3 character
 const createCategorySchema = z.object({
   name: nameSchema,
   shortName: z.string().trim().min(2, 'The short name needs at least 2 characters').max(30, 'Keep the short name under 30 characters').optional(),
-  topics: z.array(z.string().trim().max(120, 'Keep a topic under 120 characters')).max(40, 'Add at most 40 topics at once'),
+  // Blank lines are ignored later; any topic that is written must be as long as one added on its own.
+  topics: z
+    .array(z.string().trim().max(120, 'Keep a topic under 120 characters'))
+    .max(40, 'Add at most 40 topics at once')
+    .refine((items) => items.every((t) => t === '' || t.length >= 3), 'A topic needs at least 3 characters'),
 });
 const updateCategorySchema = z
   .object({ name: nameSchema.optional(), shortName: z.string().trim().min(2).max(30).optional() })
