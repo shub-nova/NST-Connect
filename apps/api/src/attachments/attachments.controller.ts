@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { CurrentUser, Roles } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
 import { parseOrThrow } from '../common/zod';
 import { Role } from '../generated/prisma/client';
 import { AttachmentsService } from './attachments.service';
+import { viewQuerySchema } from './view-query';
 
 const uploadSchema = z.object({
   fileName: z.string().trim().min(1).max(255),
@@ -33,7 +34,7 @@ export class AttachmentsController {
   }
 
   @Get('attachments/:id/download')
-  download(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.attachments.downloadUrl(user.id, id);
+  download(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() query: unknown) {
+    return this.attachments.downloadUrl(user.id, id, parseOrThrow(viewQuerySchema, query).inline === '1');
   }
 }

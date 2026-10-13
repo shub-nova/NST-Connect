@@ -60,6 +60,26 @@ const FILE_RULES: Record<string, FileRule> = {
   'video/webm': { maxBytes: 100 * MB, extensions: ['webm'], matches: (h) => startsWith(h, [0x1a, 0x45, 0xdf, 0xa3]) },
 };
 
+/**
+ * Types a browser can show on its own, so the app may open them inside the page instead of downloading. Everything
+ * here is also in FILE_RULES (no SVG, no HTML, nothing that can run scripts). Word, Excel and PowerPoint files are not
+ * shown by browsers, so they are still downloaded.
+ */
+const PREVIEWABLE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+  'application/pdf',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'text/plain',
+  'text/csv',
+]);
+
+export const canPreview = (mimeType: string): boolean => PREVIEWABLE_TYPES.has(mimeType);
+
 export const MAX_ATTACHMENTS_PER_TICKET = 10;
 export const HEAD_BYTES_TO_CHECK = 32;
 

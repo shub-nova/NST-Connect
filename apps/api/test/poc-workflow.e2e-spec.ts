@@ -86,6 +86,11 @@ describe('POC workflow (e2e)', () => {
     const file = await fetch(dl.body.url);
     expect(Buffer.from(await file.arrayBuffer()).equals(PNG)).toBe(true);
 
+    // A POC can also view a safe file in the page.
+    const viewed = await request(server()).get(`/poc/attachments/${res.body.attachments[0].id}/download?inline=1`).set(auth(pocToken)).expect(200);
+    expect(viewed.body.inline).toBe(true);
+    expect((await fetch(viewed.body.url)).headers.get('content-disposition')).toMatch(/^inline/);
+
     const queue = await request(server()).get('/poc/queue').set(auth(pocToken)).expect(200);
     expect(queue.body.tickets.map((t: { id: string }) => t.id)).toContain(ticketId);
   });

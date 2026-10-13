@@ -13,6 +13,7 @@ import {
   HEAD_BYTES_TO_CHECK,
   MAX_ATTACHMENTS_PER_TICKET,
   checkDeclaration,
+  canPreview,
   contentMatchesType,
   sanitizeFileName,
 } from './file-rules';
@@ -92,10 +93,11 @@ export class AttachmentsService {
     return this.toView(updated);
   }
 
-  async downloadUrl(studentId: string, attachmentId: string) {
+  /** `inline` asks to view the file in the page; it is only honoured for types that are safe to show. */
+  async downloadUrl(studentId: string, attachmentId: string, inline = false) {
     const a = await this.findOwned(studentId, attachmentId);
     if (a.scanStatus !== 'CLEAN') throw new NotFoundException('Attachment not found.');
-    return { url: await this.storage.presignDownload(a.storageKey, a.fileName), expiresInSeconds: 60 };
+    return viewLink(this.storage, a, inline);
   }
 
   private async inspect(
@@ -122,4 +124,17 @@ export class AttachmentsService {
   private toView(a: { id: string; fileName: string; mimeType: string; sizeBytes: bigint }): StudentAttachment {
     return { id: a.id, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: Number(a.sizeBytes) };
   }
+}
+
+/** The signed link for a stored file: viewable for safe types when asked, otherwise a download. */
+export async function viewLink(
+  storage: StorageService,
+  a: { storageKey: string; fileName: string; mimeType: string },
+  inline: boolean,
+): Promise<{ url: string; expiresInSeconds: number; inline: boolean }> {
+  const show = inline && canPreview(a.mimeType);
+  // A viewed video makes more requests as it plays, so a viewing link lasts longer than a download link.
+  const expiresInSeconds = show ? 600 : 60;
+  const url = await storage.presignDownload(a.storageKey, a.fileName, expiresInSeconds, show ? { contentType: a.mimeType } : undefined);
+  return { url, expiresInSeconds, inline: show };
 }

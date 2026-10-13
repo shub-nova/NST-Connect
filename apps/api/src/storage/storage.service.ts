@@ -100,14 +100,19 @@ export class StorageService implements OnModuleInit {
     );
   }
 
-  presignDownload(key: string, fileName: string, expiresInSeconds = 60) {
+  /**
+   * A short-lived link to read the file. By default it makes the browser download it. With `inline` (only ever passed
+   * for a type that is safe to show) the browser may display it, and the type is stated explicitly.
+   */
+  presignDownload(key: string, fileName: string, expiresInSeconds = 60, inline?: { contentType: string }) {
     const safe = encodeURIComponent(fileName);
     return getSignedUrl(
       this.s3,
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        ResponseContentDisposition: `attachment; filename*=UTF-8''${safe}`,
+        ResponseContentDisposition: `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${safe}`,
+        ...(inline ? { ResponseContentType: inline.contentType } : {}),
       }),
       { expiresIn: expiresInSeconds },
     );

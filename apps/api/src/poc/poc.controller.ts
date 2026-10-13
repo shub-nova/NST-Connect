@@ -4,6 +4,7 @@ import { CurrentUser, Roles } from '../common/decorators';
 import type { AuthUser } from '../common/decorators';
 import { parseOrThrow } from '../common/zod';
 import { Role } from '../generated/prisma/client';
+import { viewQuerySchema } from '../attachments/view-query';
 import { MAX_BULK, PocService } from './poc.service';
 import { MAX_PAGE_SIZE } from './queue-query';
 
@@ -78,7 +79,7 @@ export class PocController {
   }
 
   @Get('attachments/:id/download')
-  download(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.poc.attachmentUrl(user.id, id);
+  download(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Query() query: unknown) {
+    return this.poc.attachmentUrl(user.id, id, parseOrThrow(viewQuerySchema, query).inline === '1');
   }
 }

@@ -68,6 +68,33 @@ describe('Attachments (e2e)', () => {
     expect(Buffer.from(await file.arrayBuffer()).equals(PNG)).toBe(true);
   });
 
+  it('lets the student view a safe file in the page, and still downloads types a browser cannot show', async () => {
+    const png = await upload(PNG, 'view.png', 'image/png');
+    await request(server()).post(`/attachments/${png.attachmentId}/confirm`).set(auth(token)).expect(200);
+
+    const viewed = await request(server()).get(`/attachments/${png.attachmentId}/download?inline=1`).set(auth(token)).expect(200);
+    expect(viewed.body).toMatchObject({ inline: true, expiresInSeconds: 600 });
+    const shown = await fetch(viewed.body.url);
+    expect(shown.headers.get('content-disposition')).toMatch(/^inline/);
+    expect(shown.headers.get('content-type')).toBe('image/png');
+
+    // Without the flag it is still a download.
+    const plain = await request(server()).get(`/attachments/${png.attachmentId}/download`).set(auth(token)).expect(200);
+    expect(plain.body).toMatchObject({ inline: false, expiresInSeconds: 60 });
+    expect((await fetch(plain.body.url)).headers.get('content-disposition')).toMatch(/^attachment/);
+
+    // A Word file cannot be shown by a browser, so asking to view it falls back to a download.
+    const word = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('not really a document, but it starts like a zip')]);
+    const doc = await upload(word, 'notes.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    await request(server()).post(`/attachments/${doc.attachmentId}/confirm`).set(auth(token)).expect(200);
+    const fallback = await request(server()).get(`/attachments/${doc.attachmentId}/download?inline=1`).set(auth(token)).expect(200);
+    expect(fallback.body.inline).toBe(false);
+    expect((await fetch(fallback.body.url)).headers.get('content-disposition')).toMatch(/^attachment/);
+
+    await request(server()).get(`/attachments/${png.attachmentId}/download?inline=yes`).set(auth(token)).expect(400);
+    await request(server()).get(`/attachments/${png.attachmentId}/download?inline=1`).set(auth(otherToken)).expect(404); // not theirs
+  });
+
   it('storage allows browser uploads from the web app origin (CORS preflight)', async () => {
     // The browser PUTs straight to storage from the web origin, so storage must allow it.
     // Node tests do not enforce CORS, which is how this once slipped past them.

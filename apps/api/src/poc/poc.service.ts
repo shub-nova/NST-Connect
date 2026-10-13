@@ -4,6 +4,7 @@ import { EventType, Prisma, TicketStatus } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { FINISHED_STATUSES } from '../tickets/ticket-status';
 import { deadlineAfter, getTatHours } from '../settings/tat';
+import { viewLink } from '../attachments/attachments.service';
 import { StorageService } from '../storage/storage.service';
 import { STATUS_LABELS } from '../tickets/student-view';
 import {
@@ -204,7 +205,7 @@ export class PocService {
     };
   }
 
-  async attachmentUrl(pocId: string, attachmentId: string) {
+  async attachmentUrl(pocId: string, attachmentId: string, inline = false) {
     const scope = await this.scope(pocId);
     const a = scope.length
       ? await this.prisma.attachment.findFirst({
@@ -212,7 +213,7 @@ export class PocService {
         })
       : null;
     if (!a) throw new NotFoundException('Attachment not found.');
-    return { url: await this.storage.presignDownload(a.storageKey, a.fileName), expiresInSeconds: 60 };
+    return viewLink(this.storage, a, inline);
   }
 
   /** Reply to the student. The first reply on a fresh ticket also marks it in progress. */
