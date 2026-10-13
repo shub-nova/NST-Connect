@@ -51,7 +51,7 @@ Base address: in development `http://localhost:3000`; in production `https://<we
 | --- | --- | --- |
 | `POST /tickets/:ticketId/attachments` | `{ fileName, mimeType, sizeBytes }` | `{ attachmentId, uploadUrl, headers, expiresInSeconds: 300 }`. 400 type/size/extension/limit (10 per ticket) |
 | `POST /attachments/:id/confirm` | `{}` | The attachment `{ id, fileName, mimeType, sizeBytes }`. 409 not uploaded yet; 422 content/size/type mismatch (file removed) |
-| `GET /attachments/:id/download` | | `{ url, expiresInSeconds: 60 }` (own files, `CLEAN` only) |
+| `GET /attachments/:id/download` | query `inline=1` (optional) | `{ url, expiresInSeconds, inline }` (own files, `CLEAN` only). Default: a 60 s download link. With `inline=1` and a viewable type (PNG, JPEG, GIF, WebP, PDF, MP4, WebM, MOV, TXT, CSV): a 600 s link that displays in the browser (`inline: true`); other types fall back to a download (`inline: false`). Any other value of `inline` → 400 |
 
 The browser then `PUT`s the file to `uploadUrl` with the returned `headers` (see 7.6).
 
@@ -64,7 +64,7 @@ The browser then `PUT`s the file to `uploadUrl` with the returned `headers` (see
 | `POST /poc/tickets/:id/status` | `{ status: "IN_PROGRESS" }` | Updated detail. 409 if already in progress or finished |
 | `POST /poc/tickets/:id/close` | `{ outcome: SOLVED｜CLOSED｜ESCALATED, note (5–2000) }` | Detail, or `{ escalated: true }` when escalated. 409: finished; top level; nobody on duty at next level |
 | `POST /poc/tickets/bulk` | `{ ticketIds[1–50], action: SOLVED｜CLOSED｜ESCALATED｜REPLY, note }` (note ≥ 5 for outcomes, ≥ 1 for reply) | `{ done, failed: [{ id, reason }] }` |
-| `GET /poc/attachments/:id/download` | | `{ url, expiresInSeconds: 60 }` for tickets in scope |
+| `GET /poc/attachments/:id/download` | query `inline=1` (optional) | Same as the student endpoint, for tickets in scope |
 
 ## Staff / team management (`@Roles(POC, SUPER_ADMIN)`, `/staff`)
 Access is further decided by reach (L1 → 403; outside reach → 404).

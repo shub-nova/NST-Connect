@@ -71,7 +71,7 @@ Tabs: **All**, **Open**, **Done** (Solved or Closed). You only see your own tick
 | Closed by you | You closed it yourself. |
 | Reopened | You reopened it. It is back with the team. |
 
-Open a ticket to see your description, attachments (click to download) and the **Timeline**: every step in order, including the team's replies and their note when it is Solved or Closed. Your own messages show as "You".
+Open a ticket to see your description, attachments (click a picture, PDF, video or text file to **view it right in the page**; use the download button on its card to save it. Word, Excel and PowerPoint files download when clicked) and the **Timeline**: every step in order, including the team's replies and their note when it is Solved or Closed. Your own messages show as "You".
 
 ### You cannot send messages on an open ticket
 The only message you write after sending is the reason when you **reopen**. If the team needs more information they will ask in a reply on the timeline. Put as much detail as you can in the first description. For a new problem, raise a new ticket.

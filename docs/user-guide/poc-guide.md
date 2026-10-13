@@ -83,7 +83,7 @@ If a ticket is **Critical** you see a red banner: *This ticket was not solved wi
 | **Closed** | Finished without a fix (duplicate, invalid, not possible, no response). | "Closed" and your note | Same as above. |
 | **Escalate** | You cannot fix it, or it needs more authority. | Only "Escalated to *team*" | Moves to the next level with a fresh timer. **Only staff see your note.** |
 
-**4. Download attachments.** POCs cannot upload files; only students attach them.
+**4. View or download attachments.** Click a picture, PDF, video or text file to view it in the page (the window has a Download button); other files (Word, Excel, PowerPoint) download when clicked, and every card has a download button. POCs cannot upload files; only students attach them.
 
 ### What you cannot do
 - Act on a ticket that is already Solved or Closed ("This ticket is already finished.").

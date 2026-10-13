@@ -77,6 +77,7 @@ Hand-written TypeScript shapes for every API response (`TicketDetail`, `PocQueue
 | --- | --- |
 | `TicketComposer.tsx` | The raise-a-ticket card: topic chips, issue dropdown (hidden when a topic has one issue), title, description, file picking, live validation shown after the first Send, and the upload sequence (create ticket first, then upload each file; failures are counted, the ticket still exists). |
 | `FeedbackCard.tsx` | Satisfied / Okay / Not satisfied with optional comment; shows the saved answer and a "Change" link while allowed. |
+| `AttachmentViewer.tsx` | `TicketAttachments` (used by the student and POC ticket pages): the file cards plus a large window that shows a picture, PDF (iframe), video or text file inside the page, with a Download button; types a browser cannot show still download. `lib/files.ts` `previewKind()` decides which. |
 | `lib/files.ts` | Mirrors the server's file rules (types, extensions, limits, `MAX_FILES = 10`) for instant feedback. The server enforces them again. |
 
 ### POC and staff
