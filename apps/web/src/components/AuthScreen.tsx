@@ -3,7 +3,7 @@
 import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { LogoMark } from "./AppShell";
@@ -143,6 +143,10 @@ function LoginForm() {
 }
 
 function SignupForm() {
+  // A staff invitation link carries a token that names the invited address. The form then shows that address and
+  // cannot change it, so the person who was added is the one who signs up (the server checks this too).
+  const invite = useSearchParams().get("invite");
+  const [invited, setInvited] = useState<{ state: "loading" | "ok" | "bad"; message?: string } | null>(invite ? { state: "loading" } : null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -150,12 +154,28 @@ function SignupForm() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  useEffect(() => {
+    if (!invite) return;
+    let cancelled = false;
+    api<{ email: string; name: string }>(`/auth/invite?token=${encodeURIComponent(invite)}`)
+      .then((details) => {
+        if (cancelled) return;
+        setName(details.name);
+        setEmail(details.email);
+        setInvited({ state: "ok" });
+      })
+      .catch((err) => !cancelled && setInvited({ state: "bad", message: err instanceof ApiError ? err.message : "Could not reach the server. Try again." }));
+    return () => {
+      cancelled = true;
+    };
+  }, [invite]);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/register", { body: { name, email, password } });
+      await api("/auth/register", { body: { name, email, password, ...(invite ? { invite } : {}) } });
       setDone(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
@@ -187,16 +207,32 @@ function SignupForm() {
     );
   }
 
+  if (invited?.state === "loading") return <p className="py-6 text-center text-sm text-muted">Checking your invitation…</p>;
+  if (invited?.state === "bad") {
+    return (
+      <div className="space-y-5 py-4 text-center">
+        <h2 className="text-2xl font-bold text-ink">This invitation does not work</h2>
+        <p className="text-sm text-muted">{invited.message}</p>
+        <Link href="/login" className="block w-full rounded-lg bg-brand py-3.5 text-center text-base font-semibold text-white hover:bg-brand-dark">
+          Go to log in
+        </Link>
+      </div>
+    );
+  }
+
+  const locked = invited?.state === "ok";
+  const lockedCls = "cursor-not-allowed bg-surface text-muted";
   return (
     <form onSubmit={onSubmit} className="space-y-5">
+      {locked && <p className="rounded-lg border border-line bg-surface px-3.5 py-2.5 text-sm text-ink">You were invited as staff. Choose a password for this email address to finish creating your account.</p>}
       <ErrorNote message={error} />
       <label className="block">
         <Label required>Full Name</Label>
-        <input className={fieldCls} autoComplete="name" autoFocus required minLength={2} value={name} onChange={(e) => setName(e.target.value)} placeholder="What should we call you?" />
+        <input className={`${fieldCls} ${locked ? lockedCls : ""}`} autoComplete="name" autoFocus={!locked} required minLength={2} readOnly={locked} value={name} onChange={(e) => setName(e.target.value)} placeholder="What should we call you?" />
       </label>
       <label className="block">
-        <Label required>College Email</Label>
-        <input className={fieldCls} type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@adypu.edu.in" />
+        <Label required>{locked ? "Email" : "College Email"}</Label>
+        <input className={`${fieldCls} ${locked ? lockedCls : ""}`} type="email" autoComplete="email" required readOnly={locked} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@adypu.edu.in" />
       </label>
       <label className="block">
         <Label required>Password</Label>
@@ -241,7 +277,10 @@ export default function AuthScreen({ mode }: { mode: Mode }) {
       <TopBar mode="signup" />
       <main className="flex flex-1 items-start justify-center px-4 py-10 sm:items-center">
         <div className="w-full max-w-md space-y-6 rounded-2xl border border-line bg-white p-5 sm:p-7">
-          <SignupForm />
+          {/* useSearchParams needs a Suspense boundary in the App Router. */}
+          <Suspense>
+            <SignupForm />
+          </Suspense>
           <p className="text-center text-sm text-ink">
             Already have an account?{" "}
             <Link href="/login" className="font-medium text-brand hover:underline">
