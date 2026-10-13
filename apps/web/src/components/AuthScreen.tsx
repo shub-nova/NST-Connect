@@ -152,7 +152,8 @@ function SignupForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  // "check": a verification email was sent. "ready": an invitation already proved the address, so the account can be used now.
+  const [done, setDone] = useState<null | "check" | "ready">(null);
 
   useEffect(() => {
     if (!invite) return;
@@ -175,8 +176,8 @@ function SignupForm() {
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/register", { body: { name, email, password, ...(invite ? { invite } : {}) } });
-      setDone(true);
+      const res = await api<{ verified?: boolean }>("/auth/register", { body: { name, email, password, ...(invite ? { invite } : {}) } });
+      setDone(res.verified ? "ready" : "check");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not reach the server. Try again.");
     } finally {
@@ -184,7 +185,21 @@ function SignupForm() {
     }
   }
 
-  if (done) {
+  if (done === "ready") {
+    return (
+      <div className="space-y-5 py-4 text-center">
+        <h2 className="text-2xl font-bold text-ink">Your account is ready</h2>
+        <p className="text-muted">
+          Your invitation already confirmed <strong className="text-ink">{email}</strong>, so there is nothing more to verify. Log in with the password you just chose.
+        </p>
+        <Link href="/login" className="block w-full rounded-lg bg-brand py-3.5 text-center text-base font-semibold text-white hover:bg-brand-dark">
+          Go to log in
+        </Link>
+      </div>
+    );
+  }
+
+  if (done === "check") {
     return (
       <div className="space-y-5 py-4 text-center">
         <h2 className="text-2xl font-bold text-ink">Check your email</h2>
