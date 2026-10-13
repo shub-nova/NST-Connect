@@ -24,8 +24,10 @@ const FINISH_EVENTS = ['RESOLVED', 'CLOSED'] as const;
  * last word, so its decision is final. (Today the top level is L2; the rule follows the
  * category's configured top level, so it keeps working if a level is added.)
  */
-function canReopen(status: TicketStatus, resolvedLevel: number | null, topLevel: number): boolean {
-  return (status === 'RESOLVED' || status === 'CLOSED') && (resolvedLevel ?? 1) < topLevel;
+function canReopen(status: TicketStatus, resolvedLevel: number | null, topLevel: number, closedByStudent: boolean): boolean {
+  if (status !== 'RESOLVED' && status !== 'CLOSED') return false;
+  // A ticket the student closed themselves is never final, even in a category with a single level.
+  return closedByStudent || (resolvedLevel ?? 1) < topLevel;
 }
 
 export interface CreateTicketInput {
@@ -193,7 +195,7 @@ export class TicketsService {
       if (t.status !== 'RESOLVED' && t.status !== 'CLOSED') {
         throw new ConflictException('Only a finished ticket can be reopened.');
       }
-      if (!canReopen(t.status, t.resolvedLevel, t.category.maxLevel)) {
+      if (!canReopen(t.status, t.resolvedLevel, t.category.maxLevel, t.closedByStudent)) {
         throw new ConflictException('This outcome is final, so the ticket cannot be reopened.');
       }
 
@@ -303,8 +305,9 @@ export class TicketsService {
     });
     if (!t) throw new NotFoundException('Ticket not found.');
 
-    // Feedback belongs to the latest Solved or Closed event, so a reopened ticket can be rated again.
-    const finished = t.status === 'RESOLVED' || t.status === 'CLOSED';
+    // Feedback belongs to the latest Solved or Closed event, so a reopened ticket can be rated again. A ticket the student
+    // closed themselves has no POC outcome to rate, even if an earlier finish (before a reopen) still exists in its history.
+    const finished = (t.status === 'RESOLVED' || t.status === 'CLOSED') && !t.closedByStudent;
     const finish = finished
       ? await this.prisma.ticketEvent.findFirst({
           where: { ticketId, type: { in: [...FINISH_EVENTS] } },
@@ -345,7 +348,7 @@ export class TicketsService {
       ...toStudentSummary(t),
       description: t.description,
       resolvedAt: t.resolvedAt,
-      canReopen: canReopen(t.status, t.resolvedLevel, t.category.maxLevel),
+      canReopen: canReopen(t.status, t.resolvedLevel, t.category.maxLevel, t.closedByStudent),
       // Feedback is about a POC's outcome, so a ticket the student closed themselves has none.
       canGiveFeedback: finish !== null,
       feedback,
@@ -367,12 +370,13 @@ export class TicketsService {
   async giveFeedback(studentId: string, ticketId: string, input: { rating: 'SATISFIED' | 'OKAY' | 'NOT_SATISFIED'; comment?: string }): Promise<StudentFeedback> {
     const t = await this.prisma.ticket.findFirst({
       where: { id: ticketId, studentId },
-      select: { id: true, status: true, categoryId: true, subCategoryId: true, resolvedLevel: true },
+      select: { id: true, status: true, closedByStudent: true, categoryId: true, subCategoryId: true, resolvedLevel: true },
     });
     if (!t) throw new NotFoundException('Ticket not found.');
     if (t.status !== 'RESOLVED' && t.status !== 'CLOSED') {
       throw new ConflictException('You can share feedback once your ticket is Solved or Closed.');
     }
+    if (t.closedByStudent) throw new ConflictException('You closed this ticket yourself, so there is no outcome to rate.');
 
     const finish = await this.prisma.ticketEvent.findFirst({
       where: { ticketId, type: { in: [...FINISH_EVENTS] } },

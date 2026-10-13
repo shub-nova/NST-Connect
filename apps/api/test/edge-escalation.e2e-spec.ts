@@ -117,21 +117,26 @@ describe('Edge cases: automatic escalation (e2e)', () => {
     expect(await prisma().notification.count({ where: { ticketId: edge, type: 'TAT_WARNING' } })).toBe(before);
   });
 
-  it('leaves alone tickets with no owner and no deadline, finished tickets, and critical tickets', async () => {
+  it('leaves alone finished tickets and critical tickets, and gives a ticket with no owner an owner without escalating it', async () => {
     await quietTheRest();
     const ownerless = await make({ status: 'CREATED', deadline: null, owner: null });
     const solved = await make({ status: 'RESOLVED', deadline: new Date(Date.now() - 10 * HOUR) }); // a stale deadline on a finished ticket
     const closed = await make({ status: 'CLOSED', deadline: new Date(Date.now() - 10 * HOUR) });
     const critical = await make({ deadline: null, critical: true, level: 3 });
-    const before = await Promise.all([ownerless, solved, closed, critical].map(row));
+    const before = await Promise.all([solved, closed, critical].map(row));
     const result = await job.runOnce();
     expect(result.escalated + result.flaggedCritical).toBe(0);
-    const after = await Promise.all([ownerless, solved, closed, critical].map(row));
+    const after = await Promise.all([solved, closed, critical].map(row));
     for (let i = 0; i < before.length; i++) {
       expect(after[i].status).toBe(before[i].status);
       expect(after[i].currentLevel).toBe(before[i].currentLevel);
       expect(after[i].critical).toBe(before[i].critical);
     }
+    const adopted = await row(ownerless);
+    expect(adopted.status).toBe('ASSIGNED'); // someone is on duty, so it now has an owner and a clock...
+    expect(adopted.currentLevel).toBe(1); // ...at the first level, not escalated
+    expect(adopted.assignedPocId).not.toBeNull();
+    expect(adopted.tatDeadline!.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('a ticket whose owner is missing is still escalated, and the miss is recorded without a person', async () => {

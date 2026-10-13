@@ -1,6 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
-import { categoryByShortName, createTestApp, loginAsPoc, PASSWORD, prismaOf, registerAndLogin, uniqueStudentEmail, verificationTokenFor, startCleanup } from './helpers';
+import { signInvite } from '../src/auth/invite';
+import { EscalationService } from '../src/escalation/escalation.service';
+import { categoryByShortName, createTestApp, loginAsPoc, PASSWORD, prismaOf, registerAndLogin, uniqueStudentEmail, startCleanup } from './helpers';
 
 /**
  * Edge cases for the staff side: reply and note limits, bulk input, odd ids, a person removed while holding a valid
@@ -224,6 +227,40 @@ describe('Edge cases: POC work, team management and leave (e2e)', () => {
     }
   });
 
+  it('a ticket raised while nobody is on duty gets an owner from the scheduled job as soon as someone is back', async () => {
+    const exams = await categoryByShortName(app, 'Exams & Grading');
+    const subExam = exams.subCategories[0].id;
+    const everyone = await prisma().pOCAssignment.findMany({ where: { categoryId: exams.id, active: true } });
+    await prisma().pOCAssignment.updateMany({ where: { id: { in: everyone.map((a) => a.id) } }, data: { onLeave: true } });
+    try {
+      const raised = await post('/tickets', student, { title: 'Nobody is on duty', description: 'Raised while the whole team is on leave.', subCategoryId: subExam }).expect(201);
+      const id = raised.body.id as string;
+      let row = await prisma().ticket.findUniqueOrThrow({ where: { id } });
+      expect(row.status).toBe('CREATED'); // waiting, no owner, no deadline
+      expect(row.assignedPocId).toBeNull();
+      expect(row.tatDeadline).toBeNull();
+
+      const job = app.get(EscalationService);
+      await job.runOnce(); // still nobody available: it must wait, not fail
+      expect((await prisma().ticket.findUniqueOrThrow({ where: { id } })).status).toBe('CREATED');
+
+      await prisma().pOCAssignment.updateMany({ where: { id: { in: everyone.map((a) => a.id) } }, data: { onLeave: false } });
+      await job.runOnce();
+      row = await prisma().ticket.findUniqueOrThrow({ where: { id } });
+      expect(row.status).toBe('ASSIGNED');
+      expect(row.currentLevel).toBe(1);
+      expect(row.assignedPocId).not.toBeNull();
+      expect(row.tatDeadline!.getTime()).toBeGreaterThan(Date.now()); // its clock starts now
+      expect(await prisma().ticketEvent.count({ where: { ticketId: id, type: 'ASSIGNED' } })).toBe(1);
+      expect(await prisma().notification.count({ where: { ticketId: id, type: 'NEW_TICKET', userId: row.assignedPocId! } })).toBe(1);
+
+      await job.runOnce(); // running again changes nothing
+      expect(await prisma().ticketEvent.count({ where: { ticketId: id, type: 'ASSIGNED' } })).toBe(1);
+    } finally {
+      await prisma().pOCAssignment.updateMany({ where: { id: { in: everyone.map((a) => a.id) } }, data: { onLeave: false } });
+    }
+  });
+
   // ---- adding people ---------------------------------------------------------------------
 
   it('adding people: capitals, wrong domains, odd levels and names, and the same person twice', async () => {
@@ -302,13 +339,18 @@ describe('Edge cases: POC work, team management and leave (e2e)', () => {
     expect(await prisma().user.count({ where: { email } })).toBe(1);
   });
 
-  it('a newly added person who signs up is verified through the same email before they get access', async () => {
+  it('a newly added person must use their invitation link, which also verifies their address', async () => {
     const email = staffEmail('verify');
     const res = await post('/staff', admin, { name: 'Needs Verify', email, categoryId, level: 1 }).expect(201);
     added.push(res.body.id);
-    await request(server()).post('/auth/register').send({ email, name: 'Needs Verify', password: PASSWORD }).expect(202);
-    await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(403); // not verified yet
-    await request(server()).post('/auth/verify').send({ token: await verificationTokenFor(email) }).expect(200);
+    // Without the invitation link nobody can set the first password for this address.
+    const refused = await request(server()).post('/auth/register').send({ email, name: 'Needs Verify', password: PASSWORD }).expect(400);
+    expect(refused.body.message).toMatch(/invitation/i);
+    expect((await prisma().user.findUniqueOrThrow({ where: { email } })).passwordHash).toBeNull();
+
+    const invite = await signInvite(app.get(JwtService), email);
+    const ok = await request(server()).post('/auth/register').send({ email, name: 'Needs Verify', password: PASSWORD, invite }).expect(202);
+    expect(ok.body.verified).toBe(true); // the invitation was only ever emailed to this mailbox, so no second email is needed
     await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
   });
 });

@@ -1,7 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { JwtService } from '@nestjs/jwt';
 import { AppModule } from '../src/app.module';
+import { signInvite } from '../src/auth/invite';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/prisma/prisma.service';
 
@@ -40,9 +42,16 @@ export const PASSWORD = 'correct-horse-battery';
 /** Register, verify through the real email, and log in. Returns the access token. */
 export async function registerAndLogin(app: INestApplication, email: string, name = 'Test User') {
   const server = app.getHttpServer();
-  await request(server).post('/auth/register').send({ email, name, password: PASSWORD }).expect(202);
-  const token = await verificationTokenFor(email);
-  await request(server).post('/auth/verify').send({ token }).expect(200);
+  // An account that was added by name has no password yet, and only its invitation link may set the first one (as in
+  // real life); a brand-new address signs up without one.
+  const waiting = await prismaOf(app).user.findUnique({ where: { email: email.toLowerCase() } });
+  const invite = waiting && waiting.passwordHash === null ? await signInvite(app.get(JwtService), email) : undefined;
+  const registered = await request(server).post('/auth/register').send({ email, name, password: PASSWORD, ...(invite ? { invite } : {}) }).expect(202);
+  if (!registered.body.verified) {
+    // A normal sign-up is confirmed through the emailed link; an invitation already proved the mailbox.
+    const token = await verificationTokenFor(email);
+    await request(server).post('/auth/verify').send({ token }).expect(200);
+  }
   const login = await request(server).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
   return login.body.accessToken as string;
 }

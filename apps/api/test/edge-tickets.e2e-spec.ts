@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { EscalationService } from '../src/escalation/escalation.service';
 import { categoryByShortName, createTestApp, loginAsPoc, prismaOf, registerAndLogin, uniqueStudentEmail, startCleanup } from './helpers';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -211,6 +212,41 @@ describe('Edge cases: tickets and attachments (e2e)', () => {
     await request(server()).post(`/tickets/${open}/feedback`).set(auth(student)).send({ rating: 'OKAY' }).expect(409);
   });
 
+  it('a ticket the student closed can be reopened even when the category has a single level', async () => {
+    const category = await prisma().category.create({ data: { name: `Catalog Test single level ${Date.now().toString(36)}`, shortName: 'Single', maxLevel: 1, sortOrder: 98 } });
+    const topic = await prisma().subCategory.create({ data: { categoryId: category.id, name: 'Only topic', sortOrder: 0 } });
+    const staff = await prisma().user.create({ data: { email: `staff.test.single${Date.now().toString(36)}@newtonschool.co`, name: 'Only Level', role: 'POC', passwordHash: 'placeholder-not-a-real-hash', emailVerifiedAt: new Date() } });
+    const assignment = await prisma().pOCAssignment.create({ data: { userId: staff.id, categoryId: category.id, level: 1 } });
+    try {
+      const id = (await create({ ...valid(), subCategoryId: topic.id }).expect(201)).body.id as string;
+      await request(server()).post(`/tickets/${id}/close`).set(auth(student)).send({}).expect(200);
+      const detail = await request(server()).get(`/tickets/${id}`).set(auth(student)).expect(200);
+      expect(detail.body.canReopen).toBe(true); // the top level is level 1, but this outcome was the student's own
+      await request(server()).post(`/tickets/${id}/reopen`).set(auth(student)).send({ comment: 'I changed my mind about this.' }).expect(200);
+    } finally {
+      await prisma().ticketEvent.deleteMany({ where: { ticket: { categoryId: category.id } } });
+      await prisma().notification.deleteMany({ where: { ticket: { categoryId: category.id } } });
+      await prisma().comment.deleteMany({ where: { ticket: { categoryId: category.id } } });
+      await prisma().ticket.deleteMany({ where: { categoryId: category.id } });
+      await prisma().pOCAssignment.delete({ where: { id: assignment.id } });
+      await prisma().user.delete({ where: { id: staff.id } });
+      await prisma().subCategory.delete({ where: { id: topic.id } });
+      await prisma().category.delete({ where: { id: category.id } });
+    }
+  });
+
+  it('routing never picks a deactivated user, even if their assignment was left active', async () => {
+    const email = `staff.test.deact${Date.now().toString(36)}@newtonschool.co`;
+    const ghost = await prisma().user.create({ data: { email, name: 'Deactivated But Assigned', role: 'POC', passwordHash: 'placeholder-not-a-real-hash', emailVerifiedAt: new Date(), deactivatedAt: new Date() } });
+    const assignment = await prisma().pOCAssignment.create({ data: { userId: ghost.id, categoryId, level: 1 } }); // zero tickets: would always win on load
+    try {
+      for (let i = 0; i < 3; i++) expect((await prisma().ticket.findUniqueOrThrow({ where: { id: await newTicket() } })).assignedPocId).not.toBe(ghost.id);
+    } finally {
+      await prisma().pOCAssignment.delete({ where: { id: assignment.id } });
+      await prisma().user.delete({ where: { id: ghost.id } });
+    }
+  });
+
   // ---- attachments -----------------------------------------------------------------------
 
   const requestUpload = (id: string, body: Record<string, unknown>, t = student) => request(server()).post(`/tickets/${id}/attachments`).set(auth(t)).send(body);
@@ -227,6 +263,31 @@ describe('Edge cases: tickets and attachments (e2e)', () => {
     expect(JSON.stringify(eleventh.body)).toMatch(/at most 10/);
     const detail = await request(server()).get(`/tickets/${id}`).set(auth(student)).expect(200);
     expect(detail.body.attachments).toHaveLength(10);
+  });
+
+  it('abandoned uploads do not use up a ticket’s attachment slots, but attempts still in progress do', async () => {
+    const id = await newTicket();
+    const uploader = (await prisma().ticket.findUniqueOrThrow({ where: { id } })).studentId;
+    const row = (minutesAgo: number, i: number) => ({ ticketId: id, uploaderId: uploader, storageKey: `tickets/${id}/stale-${minutesAgo}-${i}`, fileName: `abandoned${i}.png`, mimeType: 'image/png', sizeBytes: BigInt(PNG.length), scanStatus: 'PENDING' as const, createdAt: new Date(Date.now() - minutesAgo * 60_000) });
+
+    // Ten attempts that were started 30 minutes ago and never finished: they must not block a new upload.
+    await prisma().attachment.createMany({ data: Array.from({ length: 10 }, (_, i) => row(30, i)) });
+    await requestUpload(id, { fileName: 'fresh.png', mimeType: 'image/png', sizeBytes: PNG.length }).expect(201);
+    expect(await prisma().attachment.count({ where: { ticketId: id, createdAt: { lt: new Date(Date.now() - 20 * 60_000) } } })).toBe(0); // the stale rows were cleared
+
+    // Attempts started a minute ago may still be uploading, so they do count towards the limit.
+    const busy = await newTicket();
+    await prisma().attachment.createMany({ data: Array.from({ length: 10 }, (_, i) => ({ ...row(1, i), ticketId: busy, storageKey: `tickets/${busy}/fresh-${i}` })) });
+    const blocked = await requestUpload(busy, { fileName: 'eleventh.png', mimeType: 'image/png', sizeBytes: PNG.length }).expect(400);
+    expect(JSON.stringify(blocked.body)).toMatch(/at most 10/);
+  });
+
+  it('the scheduled job also clears abandoned uploads on every ticket', async () => {
+    const id = await newTicket();
+    const uploader = (await prisma().ticket.findUniqueOrThrow({ where: { id } })).studentId;
+    await prisma().attachment.create({ data: { ticketId: id, uploaderId: uploader, storageKey: `tickets/${id}/abandoned`, fileName: 'abandoned.png', mimeType: 'image/png', sizeBytes: BigInt(1), scanStatus: 'PENDING', createdAt: new Date(Date.now() - 60 * 60_000) } });
+    await app.get(EscalationService).runOnce();
+    expect(await prisma().attachment.count({ where: { ticketId: id } })).toBe(0);
   });
 
   it('handles odd file names, capital extensions and wrong sizes', async () => {

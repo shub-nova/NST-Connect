@@ -12,7 +12,7 @@ import { FINISHED_STATUSES } from './ticket-status';
  */
 export async function pickLeastLoadedOwner(tx: Prisma.TransactionClient, categoryId: string, level: number) {
   const pool = await tx.pOCAssignment.findMany({
-    where: { categoryId, level, active: true, onLeave: false },
+    where: { categoryId, level, active: true, onLeave: false, user: { deactivatedAt: null } },
     include: { user: { select: { passwordHash: true } } },
   });
   if (!pool.length) return null;

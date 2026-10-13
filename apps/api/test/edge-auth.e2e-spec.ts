@@ -134,6 +134,47 @@ describe('Edge cases: accounts and sessions (e2e)', () => {
     await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
   });
 
+  it('signing up again with an UNVERIFIED address never changes its password (no pre-verification takeover)', async () => {
+    const email = fresh();
+    await register({ email, name: 'Real Owner', password: PASSWORD }).expect(202); // the owner signs up
+    const before = await prisma().user.findUniqueOrThrow({ where: { email } });
+    await register({ email, name: 'Attacker', password: 'attacker-chosen-password' }).expect(202); // an attacker re-registers the address
+    const after = await prisma().user.findUniqueOrThrow({ where: { email } });
+    expect(after.passwordHash).toBe(before.passwordHash);
+    expect(after.name).toBe('Real Owner');
+
+    // The owner clicks the link in their mailbox: the account is verified with THEIR password, not the attacker's.
+    await request(server()).post('/auth/verify').send({ token: await verificationTokenFor(email) }).expect(200);
+    await request(server()).post('/auth/login').send({ email, password: 'attacker-chosen-password' }).expect(401);
+    await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
+  });
+
+  it('a repeat sign-up sends a fresh verification link, so someone whose link expired can still finish', async () => {
+    const email = fresh();
+    await register({ email, name: 'Late Verifier', password: PASSWORD }).expect(202);
+    const first = await verificationTokenFor(email);
+    await register({ email, name: 'Late Verifier', password: PASSWORD }).expect(202);
+    const jwt = app.get(JwtService);
+    const user = await prisma().user.findUniqueOrThrow({ where: { email } });
+    const fresher = await jwt.signAsync({ sub: user.id, purpose: 'verify' }, { expiresIn: '1h' });
+    expect(first).toBeTruthy();
+    await request(server()).post('/auth/verify').send({ token: fresher }).expect(200);
+    await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
+  });
+
+  it('an account that was added by name (no password yet), including the admin, cannot be claimed without its invitation link', async () => {
+    const invited = `staff.test.claim${stamp}@newtonschool.co`;
+    await prisma().user.create({ data: { email: invited, name: 'Added By Name', role: 'POC' } });
+    const res = await register({ email: invited, name: 'Attacker', password: 'attacker-chosen-password' }).expect(400);
+    expect(res.body.message).toMatch(/invitation/i);
+    expect((await prisma().user.findUniqueOrThrow({ where: { email: invited } })).passwordHash).toBeNull();
+
+    // The seeded admin has no password until the setup script sets one; sign-up must not be a way in.
+    await prisma().user.update({ where: { email: 'admin@newtonschool.co' }, data: { passwordHash: null, emailVerifiedAt: null } });
+    await register({ email: 'admin@newtonschool.co', name: 'Not The Admin', password: 'attacker-chosen-password' }).expect(400);
+    expect((await prisma().user.findUniqueOrThrow({ where: { email: 'admin@newtonschool.co' } })).passwordHash).toBeNull();
+  });
+
   it('login does not reveal whether an unverified account exists: a wrong password is a plain 401', async () => {
     const email = fresh();
     await register({ email, name: 'Not Verified', password: PASSWORD }).expect(202);
@@ -211,6 +252,16 @@ describe('Edge cases: accounts and sessions (e2e)', () => {
     await request(server()).post('/auth/logout').set('Cookie', cookie).expect(204);
     await request(server()).post('/auth/logout').set('Cookie', cookie).expect(204);
     await request(server()).post('/auth/logout').expect(204);
+  });
+
+  it('a deactivated account cannot use the rotation grace window to get new tokens', async () => {
+    const email = fresh();
+    await registerAndLogin(app, email);
+    const login = await request(server()).post('/auth/login').send({ email, password: PASSWORD }).expect(200);
+    const first = (login.headers['set-cookie'] as unknown as string[]).map((c) => c.split(';')[0]).join('; ');
+    await request(server()).post('/auth/refresh').set('Cookie', first).expect(200); // rotates: `first` is now inside the grace window
+    await prisma().user.update({ where: { email }, data: { deactivatedAt: new Date() } });
+    await request(server()).post('/auth/refresh').set('Cookie', first).expect(401);
   });
 
   it('refresh: no cookie, a made-up cookie and an expired token all give 401', async () => {

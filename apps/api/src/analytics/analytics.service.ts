@@ -72,8 +72,10 @@ export class AnalyticsService {
   async team(userId: string, range: DateRange) {
     const mine = await this.myAssignments(userId);
     if (!mine.some((m) => m.level >= 2)) throw new ForbiddenException('Team analytics is for L2 and L3.');
-    const people = await this.below(mine.filter((m) => m.level >= 2));
-    const scope: Scope = { userIds: [...new Set(people.map((p) => p.userId))], categoryIds: mine.map((m) => m.categoryId) };
+    const leading = mine.filter((m) => m.level >= 2); // the categories where this person actually leads a team
+    const people = await this.below(leading);
+    // Only those categories: a person who is also an L1 somewhere else must not see their team members' work there.
+    const scope: Scope = { userIds: [...new Set(people.map((p) => p.userId))], categoryIds: [...new Set(leading.map((m) => m.categoryId))] };
     const members = await Promise.all(
       // Alphabetical, on purpose: this is for comparing workloads, not for ranking people.
       people

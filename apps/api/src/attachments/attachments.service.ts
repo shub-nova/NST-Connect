@@ -17,6 +17,7 @@ import {
   contentMatchesType,
   sanitizeFileName,
 } from './file-rules';
+import { purgeStaleUploads, staleBefore } from './stale-uploads';
 
 export interface UploadRequest {
   fileName: string;
@@ -39,8 +40,11 @@ export class AttachmentsService {
     const declared = checkDeclaration(input.fileName, input.mimeType, input.sizeBytes);
     if (!declared.ok) throw new BadRequestException(declared.reason);
 
+    // Abandoned attempts (requested, never confirmed) must not use up the ticket's slots: clear the stale ones, and count
+    // only finished files and attempts that could still be in progress.
+    await purgeStaleUploads(this.prisma, this.storage, ticketId);
     const existing = await this.prisma.attachment.count({
-      where: { ticketId, scanStatus: { not: 'INFECTED' } },
+      where: { ticketId, OR: [{ scanStatus: 'CLEAN' }, { scanStatus: 'PENDING', createdAt: { gte: staleBefore() } }] },
     });
     if (existing >= MAX_ATTACHMENTS_PER_TICKET) {
       throw new BadRequestException(`A ticket can have at most ${MAX_ATTACHMENTS_PER_TICKET} attachments.`);

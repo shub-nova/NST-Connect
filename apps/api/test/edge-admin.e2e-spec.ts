@@ -218,6 +218,44 @@ describe('Edge cases: admin tools and analytics (e2e)', () => {
     expect(res.body.finishTimes).toHaveLength(10);
   });
 
+  it('team analytics only covers the categories where the person leads a team, not other categories where they are an L1', async () => {
+    // X leads S in Documents (X is L2 there) but is only an L1 in Fees, where S also works. X must not see S's Fees work.
+    const documents = await categoryByShortName(app, 'Documents');
+    const fees = await categoryByShortName(app, 'Fees & Finance');
+    const xEmail = `staff.test.teamx${stamp}@newtonschool.co`;
+    const sEmail = `staff.test.teams${stamp}@newtonschool.co`;
+    const [x, sPerson] = await Promise.all([
+      prisma().user.create({ data: { email: xEmail, name: 'Lead X', role: 'POC' } }),
+      prisma().user.create({ data: { email: sEmail, name: 'Member S', role: 'POC' } }),
+    ]);
+    const xDocs = await prisma().pOCAssignment.create({ data: { userId: x.id, categoryId: documents.id, level: 2 } });
+    const sDocs = await prisma().pOCAssignment.create({ data: { userId: sPerson.id, categoryId: documents.id, level: 1, managerAssignmentId: xDocs.id } });
+    const xFees = await prisma().pOCAssignment.create({ data: { userId: x.id, categoryId: fees.id, level: 1 } });
+    const sFees = await prisma().pOCAssignment.create({ data: { userId: sPerson.id, categoryId: fees.id, level: 1 } });
+    const studentRow = await prisma().user.findFirstOrThrow({ where: { role: 'STUDENT' } });
+    const mk = async (categoryId: string, subCategoryId: string, title: string) => {
+      const t = await prisma().ticket.create({ data: { title, description: 'Created for the team analytics scope test.', categoryId, subCategoryId, studentId: studentRow.id, status: 'ASSIGNED', currentLevel: 1, assignedPocId: sPerson.id, tatDeadline: new Date(Date.now() + 86400000) } });
+      await prisma().ticketEvent.create({ data: { ticketId: t.id, type: 'ASSIGNED', toStatus: 'ASSIGNED', toLevel: 1, assigneeId: sPerson.id } });
+      return t.id;
+    };
+    const ids = [await mk(documents.id, documents.subCategories[0].id, 'S works in Documents'), await mk(fees.id, fees.subCategories[0].id, 'S works in Fees')];
+    try {
+      const token = await registerAndLogin(app, xEmail, 'Lead X');
+      const team = await get('/analytics/team', token).expect(200);
+      const names = team.body.categories.map((c: { name: string }) => c.name);
+      expect(names).toContain(documents.shortName); // their own team's work is there
+      expect(names).not.toContain(fees.shortName); // another category, where X is only an L1, is not
+      expect(team.body.headline.total).toBe(1);
+      expect(team.body.members.map((m: { name: string }) => m.name)).toEqual(['Member S']);
+    } finally {
+      await prisma().ticketEvent.deleteMany({ where: { ticketId: { in: ids } } });
+      await prisma().ticket.deleteMany({ where: { id: { in: ids } } });
+      await prisma().pOCAssignment.deleteMany({ where: { id: { in: [sDocs.id, xDocs.id, xFees.id, sFees.id] } } });
+      await prisma().refreshToken.deleteMany({ where: { userId: { in: [x.id, sPerson.id] } } });
+      await prisma().user.deleteMany({ where: { id: { in: [x.id, sPerson.id] } } });
+    }
+  });
+
   it('POC analytics pages are refused to the wrong levels and to people with no team', async () => {
     const l1 = await loginAsPoc(app, 'attendance.l1.1@newtonschool.co');
     await get('/analytics/team', l1).expect(403); // L1 has no team analytics

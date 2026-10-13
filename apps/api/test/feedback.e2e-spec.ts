@@ -84,6 +84,22 @@ describe('Student feedback (e2e)', () => {
     expect(await prisma().ticketFeedback.count({ where: { ticketId: first } })).toBe(1);
   });
 
+  it('does not offer, or accept, a rating after the student closed the ticket themselves, even if a POC had solved it earlier', async () => {
+    const id = await ticket('Solved, reopened, then closed by the student');
+    await finish(id); // a POC outcome exists in the history...
+    await request(server()).post(`/tickets/${id}/reopen`).set(auth(student)).send({ comment: 'Still not working for me.' }).expect(200);
+    await request(server()).post(`/tickets/${id}/close`).set(auth(student)).send({}).expect(200); // ...but the latest finish is the student's own
+
+    const d = await detail(id);
+    expect(d.status).toBe('CLOSED');
+    expect(d.closedByYou).toBe(true);
+    expect(d.canGiveFeedback).toBe(false); // no rating card
+    expect(d.feedback).toBeNull();
+    const refused = await feedback(student, id, { rating: 'SATISFIED' }).expect(409);
+    expect(refused.body.message).toMatch(/closed this ticket yourself/i);
+    expect(await prisma().ticketFeedback.count({ where: { ticketId: id } })).toBe(0); // nothing is credited to the earlier POC
+  });
+
   it('lets the student change their answer for a week, then locks it', async () => {
     const changed = await feedback(student, first, { rating: 'NOT_SATISFIED' }).expect(200);
     expect(changed.body).toMatchObject({ rating: 'NOT_SATISFIED', comment: null });

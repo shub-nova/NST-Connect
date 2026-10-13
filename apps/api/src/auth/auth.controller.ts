@@ -42,8 +42,9 @@ export class AuthController {
   @HttpCode(202)
   async register(@Body() body: unknown) {
     const dto = parseOrThrow(registerSchema, body);
-    await this.auth.register(dto.email, dto.name, dto.password, dto.invite);
-    return { message: 'If this address is eligible, a verification email is on its way.' };
+    const { verified } = await this.auth.register(dto.email, dto.name, dto.password, dto.invite);
+    // `verified` is only ever true for a valid invitation (a secret link): the address is already proven, so no email follows.
+    return { message: verified ? 'Your account is ready. You can log in now.' : 'If this address is eligible, a verification email is on its way.', verified };
   }
 
   /** Used by the sign-up page to show (and lock) the address a staff invitation was sent to. */

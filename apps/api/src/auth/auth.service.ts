@@ -102,7 +102,12 @@ export class AuthService implements OnModuleInit {
     return { email: user.email, name: user.name };
   }
 
-  async register(rawEmail: string, name: string, password: string, invite?: string): Promise<void> {
+  /**
+   * Creates an account and emails a verification link. With a valid invitation (which was only ever emailed to the invited
+   * mailbox, so opening it already proves the address is theirs) the account is verified at once and no second email is
+   * needed: the result says so (`verified: true`) and the person can log in straight away.
+   */
+  async register(rawEmail: string, name: string, password: string, invite?: string): Promise<{ verified: boolean }> {
     const email = rawEmail.trim().toLowerCase();
     if (invite) {
       // An invitation is for one address. Registering with any other would leave the invited person without access.
@@ -121,29 +126,35 @@ export class AuthService implements OnModuleInit {
     const existing = await this.prisma.user.findUnique({ where: { email } });
     let target: User | null = null;
 
-    if (kind === 'STUDENT') {
-      if (!existing) {
-        target = await this.prisma.user.create({
-          data: {
-            email,
-            name,
-            passwordHash,
-            role: Role.STUDENT,
-            enrollmentId: email.split('@')[0],
-          },
-        });
-      } else if (!existing.emailVerifiedAt) {
-        target = await this.prisma.user.update({ where: { id: existing.id }, data: { name, passwordHash } });
+    if (invite && existing?.passwordHash) throw new ConflictException('This invitation was already used. Log in instead.');
+
+    // An existing account is never given a different password by a sign-up. Otherwise anyone could re-register somebody
+    // else's unverified address with a password of their own, and the owner clicking the verification link they were
+    // sent would verify the account with the attacker's password. A repeat sign-up only sends a fresh verification link
+    // (someone who mistyped their password verifies and then uses "Forgot password"). The one exception is an account
+    // that has no password yet because somebody was added by name: only the invitation link may set its first password.
+    if (existing) {
+      if (!existing.emailVerifiedAt) {
+        if (existing.passwordHash === null) {
+          if (!invite) {
+            throw new BadRequestException('This address was added by your team. Please sign up with the link in your invitation email (ask your team lead to resend it if you cannot find it).');
+          }
+          // The invitation proves the mailbox, so the first password also verifies the address.
+          await this.prisma.user.update({ where: { id: existing.id }, data: { passwordHash, emailVerifiedAt: new Date() } });
+          return { verified: true };
+        } else {
+          target = existing;
+        }
       }
+    } else if (kind === 'STUDENT') {
+      target = await this.prisma.user.create({
+        data: { email, name, passwordHash, role: Role.STUDENT, enrollmentId: email.split('@')[0] },
+      });
     } else {
       // Anyone on the staff domain can sign up; the verification link proves the address is theirs. That only
       // creates a POC account with NO category: it sees nothing until an admin or team lead adds them from
       // Settings. Access comes from an assignment, never from signing up. Admins are never self-registered.
-      if (existing && !existing.emailVerifiedAt) {
-        target = await this.prisma.user.update({ where: { id: existing.id }, data: { passwordHash } });
-      } else if (!existing) {
-        target = await this.prisma.user.create({ data: { email, name, passwordHash, role: Role.POC } });
-      }
+      target = await this.prisma.user.create({ data: { email, name, passwordHash, role: Role.POC } });
     }
 
     if (target) {
@@ -157,6 +168,7 @@ export class AuthService implements OnModuleInit {
     }
     // The caller always gets the same response for eligible domains, so the
     // endpoint cannot be used to discover who is registered.
+    return { verified: false };
   }
 
   async verifyEmail(token: string): Promise<void> {
@@ -270,6 +282,7 @@ export class AuthService implements OnModuleInit {
         });
         throw new UnauthorizedException();
       }
+      if (record.user.deactivatedAt) throw new UnauthorizedException(); // a deactivated account gets nothing through the grace window either
       return this.issueTokens(record.user);
     }
     if (record.expiresAt < new Date() || record.user.deactivatedAt) throw new UnauthorizedException();

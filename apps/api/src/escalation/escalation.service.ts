@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { pickLeastLoadedOwner } from '../tickets/routing';
 import { OWNED_OPEN_STATUSES } from '../tickets/ticket-status';
 import { deadlineAfter, getTatHours } from '../settings/tat';
+import { purgeStaleUploads } from '../attachments/stale-uploads';
+import { StorageService } from '../storage/storage.service';
 
 export interface EscalationRunResult {
   /** Tickets moved up a level because they were not solved within the time limit. */
@@ -37,6 +39,7 @@ export class EscalationService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
     config: ConfigService,
   ) {
     this.warningHours = config.getOrThrow<number>('TAT_WARNING_HOURS');
@@ -49,6 +52,14 @@ export class EscalationService {
     await this.prisma.pOCAssignment.updateMany({ where: { onLeave: true, onLeaveUntil: { lte: now } }, data: { onLeave: false, onLeaveUntil: null } });
 
     result.warned = await this.sendWarnings(now);
+
+    // A ticket raised while nobody was on duty at any level has no owner and no deadline, so nothing above would ever
+    // pick it up. Give it an owner as soon as someone is available again.
+    const adopted = await this.assignUnowned(now);
+    if (adopted) this.logger.log(`Gave an owner to ${adopted} ticket(s) that were waiting for someone to be on duty`);
+
+    // Housekeeping that rides on the same schedule: uploads that were requested but never finished.
+    await purgeStaleUploads(this.prisma, this.storage, undefined, now.getTime()).catch((err) => this.logger.warn(`Clearing abandoned uploads failed: ${(err as Error).message}`));
 
     for (let i = 0; i < MAX_TICKETS_PER_RUN; i++) {
       const outcome = await this.handleNextOverdue(now);
@@ -69,6 +80,49 @@ export class EscalationService {
       );
     }
     return result;
+  }
+
+  /**
+   * Tickets that were raised when nobody was on duty (status CREATED, no owner). Each goes to the least-loaded person at
+   * the first level that has someone available, with a fresh deadline, exactly as a new ticket does. A ticket nobody can
+   * take yet is left for the next run. Safe to run at any time and from several processes (rows are claimed with
+   * FOR UPDATE SKIP LOCKED).
+   */
+  private async assignUnowned(now: Date): Promise<number> {
+    let assigned = 0;
+    const tried: string[] = [];
+    for (let i = 0; i < MAX_TICKETS_PER_RUN; i++) {
+      const outcome = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM ticket
+           WHERE status = 'CREATED' AND assigned_poc_id IS NULL AND NOT (id = ANY(${tried}::uuid[]))
+           ORDER BY created_at
+           LIMIT 1
+             FOR UPDATE SKIP LOCKED`;
+        if (!rows.length) return { done: true as const };
+        const t = await tx.ticket.findUniqueOrThrow({ where: { id: rows[0].id }, include: { category: true } });
+
+        let owner = null;
+        let level = 1;
+        for (; level <= t.category.maxLevel && !owner; level++) owner = await pickLeastLoadedOwner(tx, t.categoryId, level);
+        level -= 1;
+        if (!owner) return { done: false as const, skipped: t.id }; // still nobody: leave it for a later run
+
+        await tx.ticketEvent.create({
+          data: { ticketId: t.id, type: 'ASSIGNED', actorId: null, fromStatus: 'CREATED', toStatus: 'ASSIGNED', toLevel: level, assigneeId: owner.userId, visibility: 'PUBLIC', note: level > 1 ? 'Nobody on duty at level 1' : null },
+        });
+        await tx.notification.create({ data: { userId: owner.userId, type: 'NEW_TICKET', ticketId: t.id } });
+        await tx.ticket.update({
+          where: { id: t.id },
+          data: { status: 'ASSIGNED', currentLevel: level, assignedPocId: owner.userId, tatDeadline: deadlineAfter(now, await getTatHours(tx)), tatWarnedAt: null },
+        });
+        return { done: false as const, assigned: true as const };
+      });
+      if (outcome.done) break;
+      if ('skipped' in outcome && outcome.skipped) tried.push(outcome.skipped);
+      else assigned++;
+    }
+    return assigned;
   }
 
   /** Tell POCs their ticket is about to escalate. Once per deadline. */

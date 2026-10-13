@@ -314,11 +314,14 @@ export class PocService {
     note: string,
   ): Promise<Prisma.TicketUncheckedUpdateInput> {
     const category = await tx.category.findUniqueOrThrow({ where: { id: t.categoryId } });
-    const nextLevel = t.currentLevel + 1;
-    if (nextLevel > category.maxLevel) throw new ConflictException('This ticket is already at the highest level.');
+    if (t.currentLevel + 1 > category.maxLevel) throw new ConflictException('This ticket is already at the highest level.');
 
-    const owner = await pickLeastLoadedOwner(tx, t.categoryId, nextLevel);
-    if (!owner) throw new ConflictException('No one is on duty at the next level.');
+    // The next level that has someone on duty, exactly as automatic escalation and hand-overs do: a level whose people
+    // are all away is skipped, so the ticket still moves up instead of being stuck.
+    let owner = null;
+    for (let level = t.currentLevel + 1; level <= category.maxLevel && !owner; level++) owner = await pickLeastLoadedOwner(tx, t.categoryId, level);
+    if (!owner) throw new ConflictException('No one is on duty at a higher level.');
+    const nextLevel = owner.level;
 
     await tx.ticketEvent.create({
       data: {

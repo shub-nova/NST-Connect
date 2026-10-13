@@ -76,17 +76,21 @@ describe('Staff invitation links (e2e)', () => {
     await request(server()).post('/auth/register').send({ email: invitedEmail, name: 'Invited Person', password: PASSWORD, invite: 'not-a-real-token-at-all' }).expect(400);
   });
 
-  it('lets the invited address register, verify, and see its queue', async () => {
-    await request(server()).post('/auth/register').send({ email: invitedEmail, name: 'Invited Person', password: PASSWORD, invite }).expect(202);
-    await request(server()).post('/auth/verify').send({ token: await verificationTokenFor(invitedEmail) }).expect(200);
+  it('lets the invited address register, with no second verification step, and see its queue', async () => {
+    const res = await request(server()).post('/auth/register').send({ email: invitedEmail, name: 'Invited Person', password: PASSWORD, invite }).expect(202);
+    expect(res.body.verified).toBe(true); // the invitation already proved the mailbox
+    expect((await prismaOf(app).user.findUniqueOrThrow({ where: { email: invitedEmail } })).emailVerifiedAt).not.toBeNull();
     const login = await request(server()).post('/auth/login').send({ email: invitedEmail, password: PASSWORD }).expect(200);
     const queue = await request(server()).get('/poc/queue').set(auth(login.body.accessToken)).expect(200);
     expect(queue.body.assigned).toBe(true);
   });
 
-  it('says the invitation was used once the account has a password', async () => {
+  it('says the invitation was used once the account has a password, and cannot be used to sign up again', async () => {
     const res = await request(server()).get('/auth/invite').query({ token: invite }).expect(409);
     expect(res.body.message).toMatch(/already used/i);
+    const again = await request(server()).post('/auth/register').send({ email: invitedEmail, name: 'Invited Person', password: 'a-different-password-1', invite }).expect(409);
+    expect(again.body.message).toMatch(/already used/i);
+    await request(server()).post('/auth/login').send({ email: invitedEmail, password: PASSWORD }).expect(200); // the first password is unchanged
   });
 
   it('still lets a staff address sign up without an invitation (it gets no access)', async () => {

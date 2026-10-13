@@ -331,11 +331,26 @@ describe('POC workflow (e2e)', () => {
     assertNoStaffIdentity('student detail after the full escalation chain', (await studentView(ticketId)).body);
   });
 
-  it('cannot escalate when nobody is on duty at the next level, and nothing changes', async () => {
+  it('skips a level with nobody on duty when escalating by hand, like automatic escalation does', async () => {
     const { ticketId, pocToken } = await ticketWithOwner();
     const prisma = prismaOf(app);
     const academics = await categoryByShortName(app, 'Academics');
     await prisma.pOCAssignment.updateMany({ where: { categoryId: academics.id, level: 2 }, data: { active: false } });
+    try {
+      await request(server()).post(`/poc/tickets/${ticketId}/close`).set(auth(pocToken)).send({ outcome: 'ESCALATED', note: 'Please take this one.' }).expect(200);
+      expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ status: 'ESCALATED', currentLevel: 3 });
+      const event = await prisma.ticketEvent.findFirstOrThrow({ where: { ticketId, type: 'ESCALATED' } });
+      expect(event).toMatchObject({ fromLevel: 1, toLevel: 3, reason: 'MANUAL' });
+    } finally {
+      await prisma.pOCAssignment.updateMany({ where: { categoryId: academics.id, level: 2 }, data: { active: true } });
+    }
+  });
+
+  it('cannot escalate when nobody is on duty at any higher level, and nothing changes', async () => {
+    const { ticketId, pocToken } = await ticketWithOwner();
+    const prisma = prismaOf(app);
+    const academics = await categoryByShortName(app, 'Academics');
+    await prisma.pOCAssignment.updateMany({ where: { categoryId: academics.id, level: { gte: 2 } }, data: { active: false } });
     try {
       const res = await request(server())
         .post(`/poc/tickets/${ticketId}/close`)
@@ -346,7 +361,7 @@ describe('POC workflow (e2e)', () => {
       expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).toMatchObject({ status: 'ASSIGNED', currentLevel: 1 });
       expect(await prisma.ticketEvent.count({ where: { ticketId, type: 'ESCALATED' } })).toBe(0);
     } finally {
-      await prisma.pOCAssignment.updateMany({ where: { categoryId: academics.id, level: 2 }, data: { active: true } });
+      await prisma.pOCAssignment.updateMany({ where: { categoryId: academics.id, level: { gte: 2 } }, data: { active: true } });
     }
   });
 
