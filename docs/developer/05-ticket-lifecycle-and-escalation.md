@@ -32,7 +32,7 @@ At the top level a missed deadline does not escalate: the ticket becomes `critic
 
 1. Find the active topic (and active category). Re-check the category is **staffed at every level**.
 2. In a transaction:
-   - Choose the owner: start at level 1, call `pickLeastLoadedOwner`; if nobody (everyone on leave), try level 2, then 3. If nobody at all, the ticket is stored as `CREATED` with no owner and **no deadline** (an edge case; it waits).
+   - Choose the owner: start at level 1, call `pickLeastLoadedOwner`; if nobody (everyone on leave), try level 2, then 3. If nobody at all, the ticket is stored as `CREATED` with no owner and **no deadline**; the scheduled job assigns it as soon as someone is available (see 5.6).
    - Create the ticket: status `ASSIGNED`, `currentLevel` = the level it started at, `assignedPocId`, `tatDeadline = deadlineAfter(now, getTatHours(tx))`.
    - Events: `CREATED` (actor student), and `ASSIGNED` (assignee; note "Nobody on duty at level 1" when it started higher).
    - Notification row `NEW_TICKET` for the owner.
@@ -56,7 +56,7 @@ All run through `act()` (see chapter 3): lock → verify scope → run action �
 | Mark in progress | 409 if already | `STATUS_CHANGED`; student notification; deadline untouched. |
 | Solve | note 5–2000 | `RESOLVED` event with note; status `RESOLVED`; `resolvedAt`, `resolvedLevel = currentLevel`; clear deadline/warning/critical; student notification. |
 | Close | note 5–2000 | same with `CLOSED`. |
-| Escalate | note 5–2000; next level must exist and have someone on duty | `ESCALATED` (reason `MANUAL`, assignee, note); status `ESCALATED`; level+1; new owner (least loaded); fresh deadline; clears warning/critical; notifies student and new owner. The old POC loses access (scope is by level). |
+| Escalate | note 5–2000; a higher level must exist and some level above must have someone on duty (a level with nobody is skipped, as automatic escalation does) | `ESCALATED` (reason `MANUAL`, assignee, note); status `ESCALATED`; level+1; new owner (least loaded); fresh deadline; clears warning/critical; notifies student and new owner. The old POC loses access (scope is by level). |
 | Bulk | ≤ 50 ids per request | each ticket separately with the same rules; per-ticket failures returned. |
 
 ## 5.6 Automatic escalation (`EscalationService.runOnce`)
@@ -72,7 +72,8 @@ Order inside one run:
    - Always write an **internal** `TAT_BREACHED` event (actor = the POC who held it) and a `TAT_MISSED` notification row for that POC. This is what analytics count as "Auto-escalated from me".
    - If an owner was found → `escalate()`: `ESCALATED` event (actor null = system, reason `TAT_BREACH`, assignee), notification rows for the student and the new owner, ticket → `ESCALATED`, new level/owner, fresh deadline, `tatWarnedAt` cleared.
    - If none found → `flagCritical()`: `CRITICAL` notification row to every admin, ticket `critical = true`, deadline and warning cleared (so the next run does not log the same miss again).
-4. **Heartbeat:** upsert `job_heartbeat('escalation').last_run_at = now`.
+4. **Unowned tickets and housekeeping** (run before step 3): tickets in status `CREATED` with no owner (raised while nobody was on duty at any level) are given an owner at the first level that has someone available, with a fresh deadline and `ASSIGNED` event, exactly like a new ticket; tickets nobody can take yet are left for the next run. The same run deletes uploads that were requested but never confirmed (`PENDING` for over 15 minutes) and their stored objects.
+5. **Heartbeat:** upsert `job_heartbeat('escalation').last_run_at = now`.
 
 Why it is safe to repeat: after handling, a ticket's deadline is in the future (or null), so a second run finds nothing; concurrent runs never claim the same ticket; the heartbeat is only informational.
 

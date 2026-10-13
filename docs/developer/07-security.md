@@ -22,6 +22,7 @@ The app holds students' complaints and staff identities, so security is a featur
 - **Passwords:** argon2id (`argon2` package), minimum 10 characters, maximum 128 (to bound hashing work).
 - **Email verification:** a user cannot log in until `emailVerifiedAt` is set by a signed link (JWT `purpose: 'verify'`, 24 h).
 - **Staff invitations:** the link carries a signed token naming the invited address (`invite` purpose, 14 days). The sign-up page locks the address and the server enforces it, so an invitation cannot be used to register a different address. Open staff sign-up (without an invitation) is still allowed on the staff domain, but creates an account with **no assignment**, which sees nothing until someone adds that address.
+- **No pre-verification takeover:** a sign-up never replaces the password of an existing account (see chapter 3); the first password of an account added by name (or the seeded admin) can only be set through its invitation token. The residual risk is the classic one: whoever registers a brand-new address first chooses its password, and the real owner could later click the link in their mailbox; the verification email therefore says to ignore it if the person did not sign up.
 - **Login errors:** wrong email *and* wrong password both give "Invalid email or password." The password is verified against a dummy hash for unknown emails, so response time does not reveal whether the address exists.
 - **Access token:** JWT (HS256 via `JWT_SECRET`), claims `{ sub, role, purpose: 'access' }`, 15 minutes. `JwtAuthGuard` rejects tokens whose `purpose` is not `access`.
 - **Refresh token:** random 48 bytes; only its SHA-256 is stored (`refresh_token.token_hash`), so a database leak does not yield usable tokens. Cookie flags: `httpOnly`, `SameSite=Lax`, `Secure` in production, `path = COOKIE_PATH`, `maxAge = REFRESH_TOKEN_TTL_DAYS`.
@@ -70,6 +71,8 @@ Direct-to-storage flow (the API never handles file bytes):
 4. Downloads and viewing: a **60-second signed GET URL** with `Content-Disposition: attachment` (download). When the app asks to **view** a file (`?inline=1`) and the type is in the viewable list (`canPreview` in `file-rules.ts`: PNG, JPEG, GIF, WebP, PDF, MP4, WebM, MOV, TXT, CSV), the link is `inline`, states the content type, and lasts **10 minutes** (a playing video keeps making requests). Anything else falls back to a download. The files are served from the **storage origin**, not the app's origin, so a viewed file cannot run code in the app; SVG and HTML are never accepted. Text files are fetched and shown as plain text in a `<pre>` (never as a page), first 200 KB only. Students can view their own files; POCs files of tickets in their scope.
 
 Allowed: PNG, JPEG, GIF, WebP, PDF, DOCX, XLSX, PPTX, CSV, TXT/LOG/MD, MP4, MOV, WEBM. **Not allowed:** SVG (can carry scripts), executables, archives. File names are sanitised (no paths, control characters or `<>:"|?*`, max 150 chars) and never appear in the storage key.
+
+Abandoned uploads (requested but never confirmed) stop counting towards the 10-file limit after 15 minutes and are deleted, with their stored objects, by the scheduled job.
 
 **Not done yet:** antivirus scanning (the `ScanStatus` field and `INFECTED` value exist for it).
 

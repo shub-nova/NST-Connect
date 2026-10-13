@@ -24,7 +24,7 @@ NST Connect is where you raise a problem (hostel, academics, library, IT and mor
 | Password | Yes | at least 10 characters |
 
 - We email you a **verification link**, valid for **24 hours**. Check spam if it does not arrive. You cannot log in until you open it.
-- If the link expires, sign up again with the same email to get a new one.
+- If the link expires, sign up again with the same email to get a new link. Your password does **not** change when you do this (so nobody else can set a password on your address): if you mistyped it, verify first and then use **Forgot password?**.
 - **Forgot password?** (on the login page): we email a link that works for **1 hour** and only once. Choose a new password; you are logged out everywhere else.
 - Too many wrong logins in a minute are blocked for a short time. Wait a minute and try again.
 - You stay logged in for about 7 days. Use **Log out** (avatar menu, top right) on shared computers.

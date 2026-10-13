@@ -22,7 +22,7 @@ Base address: in development `http://localhost:3000`; in production `https://<we
 | Method & path | Role | Body / notes | Result |
 | --- | --- | --- | --- |
 | `GET /auth/invite` | public, 20/min | query `token` (from a staff invitation link) | 200 `{ email, name }` (the invited address, for the sign-up page to lock); 400 invalid/expired; 409 already used |
-| `POST /auth/register` | public, 10/min | `{ email, name (2–100), password (10–128), invite? }` (with `invite` the email must equal the invited address, else 400) | 202 `{message}`. Same answer whether or not the address exists. Student domain → student; staff domain → POC without assignment. Sends a verification email. |
+| `POST /auth/register` | public, 10/min | `{ email, name (2–100), password (10–128), invite? }` (with `invite` the email must equal the invited address, else 400) | 202 `{message, verified}`. Same answer whether or not the address exists; `verified: true` only for a valid invitation (the address is already proven, so the account can log in at once and no email follows); a used invitation gets 409. Student domain → student; staff domain → POC without assignment. Sends a verification email. |
 | `POST /auth/verify` | public | `{ token }` | 200 `{message}`; 400 if invalid/expired |
 | `POST /auth/login` | public, 10/min | `{ email, password }` | 200 `{ accessToken, user }` + `refresh_token` cookie. 401 wrong credentials; 403 deactivated or unverified |
 | `POST /auth/refresh` | public | cookie only | 200 `{ accessToken, user }` + new cookie; 401 otherwise (reuse after grace revokes all sessions) |

@@ -2,7 +2,7 @@
 
 This chapter records the edge-case pass done on 2026-10-13: the automated tests that now guard each rule, the browser checks that were run by hand-scripted tests, a checklist for repeating it on a staging copy, and the defects it found and fixed. **Never run any of this against the live site or with real people's data.**
 
-## 13.1 What was added to the automated suite (181 → 265 tests, 18 → 25 suites)
+## 13.1 What was added to the automated suite (181 → 277 tests, 18 → 25 suites; the last 12 came from an external code review, see 13.3)
 
 | File | Covers |
 | --- | --- |
@@ -39,6 +39,13 @@ The scripts are throwaway (they live outside the repository). If browser tests b
 | 5 | **A new POC who had not registered yet received the next ticket** (zero open tickets made them "least loaded") and could not see it | The ticket waited until it escalated (2 days by default) | `pickLeastLoadedOwner` prefers people with an account and only uses an unregistered person when nobody else at that level is available |
 | 6 | **A very long unbroken title or description made the ticket pages wider than the screen** (student and POC, desktop and phone) | Horizontal scrolling, hidden buttons | `wrap-anywhere` on every place user text is shown |
 | 7 | **For L2, L3 (4 menu links) the account menu was pushed off the right edge on a phone** | Staff could not reach Log out or Settings on a phone | Header groups can shrink; the menu links scroll within their own space; the account button never shrinks |
+| 8 | **Account takeover before email verification** (found by an external code review): signing up again with someone else's unverified address replaced its password, so the owner clicking their verification link verified the account with the attacker's password. Invited staff (and the seeded admin) were exposed the same way | Account takeover | A sign-up never changes the password of an existing account (it only resends a link); an account with no password yet can only get its first password through a valid invitation token, and the admin only through the setup script |
+| 9 | **The refresh grace window still allowed a deactivated account** to get new tokens | A removed person's replayed cookie could mint a fresh 7-day token | The grace path now checks deactivation |
+| 10 | **Students could rate an old outcome after closing the ticket themselves** (solved, reopened, then self-closed): the rating card appeared and credited the earlier POC | Wrong credit in analytics | No rating card and a 409 once `closedByStudent` is set |
+| 11 | **Abandoned uploads used up attachment slots forever** (a `PENDING` row is created before the file is sent and was never cleaned) | After 10 failed attempts a ticket could never take another file | Only finished files and attempts under 15 minutes old count; stale ones are deleted (and their objects) when a new upload is requested and by the scheduled job |
+| 12 | **Team analytics could include another category's work**: scope was these people × all of the viewer's categories, so an L2 who is also an L1 elsewhere saw their team members' work there | Cross-category data exposure | Scope is limited to the categories where the viewer leads a team |
+| 13 | **A ticket raised while nobody was on duty was never assigned later** (no owner, no deadline, ignored by the job) | A student could wait indefinitely | The scheduled job assigns such tickets as soon as someone is available |
+| 14 | Smaller review items: **manual escalation failed when the next level had nobody on duty** (automatic escalation skips empty levels); **routing did not exclude deactivated users**; **a self-closed ticket could not be reopened in a single-level category** | Inconsistent rules | All three made consistent with the rest of the code. (Not changed: the `CREATED` event records level 1, which is where a ticket is created; the starting level is on its `ASSIGNED` event) |
 
 ## 13.4 Behaviour confirmed as intended (not defects)
 

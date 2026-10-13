@@ -19,7 +19,7 @@ An honest list of what is **not** built or is easy to trip over, so nobody is su
 
 ## 10.2 Sharp edges (behaviour you might not expect)
 
-- **A ticket with no owner** (every POC at every level on leave when it is raised) is stored as `CREATED` with no deadline and **nothing assigns it later**. Handle by keeping rosters staffed; consider a periodic "assign unowned" step in the escalation job.
+- **A ticket raised while nobody is on duty** waits in `CREATED` with no deadline until the next scheduled run after someone is available (up to about 30 minutes), then it is assigned.
 - **POCs see all tickets at their category and level**, not only theirs; acting claims the ticket (`assigned_poc_id` becomes the actor).
 - **Leave ends at the next escalation run** after the return date (midnight UTC), i.e. within about 30 minutes, or immediately when the manager presses "Back from leave". A POC on leave still *sees* their queue; they just receive nothing new.
 - **Deleting is not possible** by design. Wrong data is corrected by an admin action (remove/restore) or direct database work.
