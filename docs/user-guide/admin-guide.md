@@ -69,10 +69,10 @@ If there is no one to report to, the form says "There is no L2 to report to yet.
 
 ### Add POC
 - Fields: **Name**, **Email** (must end in the staff domain, `@newtonschool.co`), **Category**, **Level**, **Reports to**.
-- The person receives an email: an **invitation** (they must register with that email) or "You were added to ..." if they already have an account. They show as **Invited** until they set a password.
+- The person receives an email: an **invitation** with a personal sign-up link (it is tied to that email: the sign-up page shows the address and cannot change it, and any other address is refused; the link works for 14 days) or "You were added to ..." if they already have an account. They show as **Invited** until they set a password.
 - The same person can hold roles in more than one category. Someone already on that category cannot be added twice. A previously removed person is **reactivated**.
 - Each person's access is **only** their category and level pairs. Registering never gives access.
-- Email problems: **Resend invite** is in the person's ⋯ menu.
+- Email problems or an expired link (14 days): **Resend invite** is in the person's ⋯ menu; it sends a fresh link. If the person says the link does not work, resend it.
 
 ### Edit, leave, remove
 | Action | Rule |

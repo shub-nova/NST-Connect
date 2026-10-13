@@ -18,7 +18,7 @@ For everyone who answers tickets: levels **L1**, **L2** and **L3** of a category
 
 1. **Your email must end with the staff domain** (`@newtonschool.co`). Staff cannot sign up with any other address.
 2. A team lead (L2 or L3) or the admin **adds you** from **Settings**. You get an email: "You are invited to NST Connect" (or "You were added to ..." if you already have an account).
-3. Create your account at the sign-up page with **that same email** (name, password of at least 10 characters). Click the verification link (valid 24 hours), then log in.
+3. Open the **link in the invitation email**. It opens the sign-up page with **your invited email address already filled in and locked** (it cannot be changed, and any other address is refused). Choose a password (at least 10 characters). Then click the verification link we email you (valid 24 hours) and log in. The invitation link works for 14 days; if it has expired, ask your team lead to use **Resend invite**.
 4. If you sign up before being added, you can still log in, but **My queue** says **"You are not assigned to a category yet"**. Ask your team lead or the admin to add you from Settings; your tickets then appear. Signing up never gives access by itself.
 5. Forgot your password? Use **Forgot password?** on the login page (link valid 1 hour, one use).
 

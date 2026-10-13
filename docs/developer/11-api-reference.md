@@ -21,7 +21,8 @@ Base address: in development `http://localhost:3000`; in production `https://<we
 ## Auth (`/auth`)
 | Method & path | Role | Body / notes | Result |
 | --- | --- | --- | --- |
-| `POST /auth/register` | public, 10/min | `{ email, name (2–100), password (10–128) }` | 202 `{message}`. Same answer whether or not the address exists. Student domain → student; staff domain → POC without assignment. Sends a verification email. |
+| `GET /auth/invite` | public, 20/min | query `token` (from a staff invitation link) | 200 `{ email, name }` (the invited address, for the sign-up page to lock); 400 invalid/expired; 409 already used |
+| `POST /auth/register` | public, 10/min | `{ email, name (2–100), password (10–128), invite? }` (with `invite` the email must equal the invited address, else 400) | 202 `{message}`. Same answer whether or not the address exists. Student domain → student; staff domain → POC without assignment. Sends a verification email. |
 | `POST /auth/verify` | public | `{ token }` | 200 `{message}`; 400 if invalid/expired |
 | `POST /auth/login` | public, 10/min | `{ email, password }` | 200 `{ accessToken, user }` + `refresh_token` cookie. 401 wrong credentials; 403 deactivated or unverified |
 | `POST /auth/refresh` | public | cookie only | 200 `{ accessToken, user }` + new cookie; 401 otherwise (reuse after grace revokes all sessions) |
@@ -73,11 +74,11 @@ Access is further decided by reach (L1 → 403; outside reach → 404).
 | `GET /staff/team?categoryId=` | | `{ people: [{ id, userId, name, email, level, category, managerId, managerName, status: active｜invited｜on_leave, onLeave, onLeaveUntil, openTickets }] }` |
 | `GET /staff/options` | | Categories the caller may add to, with the levels they may add and the possible managers |
 | `GET /staff/audit` | | `{ changes: [{ id, action, summary, createdAt, by }] }` (latest 15) |
-| `POST /staff` | `{ name, email (staff domain), categoryId, level 1–3, managerAssignmentId? }` | Adds/reactivates; sends invitation. 400 domain/manager; 403 level; 409 already on category |
+| `POST /staff` | `{ name, email (staff domain), categoryId, level 1–3, managerAssignmentId? }` | Adds/reactivates; sends an invitation whose link is tied to the invited email. 400 domain/manager; 403 level; 409 already on category |
 | `PATCH /staff/:id` | `{ name?, managerAssignmentId? }` | Edit |
 | `POST /staff/:id/leave` | `{ onLeave: boolean, until?: "YYYY-MM-DD" }` (until required and in the future when going on leave) | Returns `{ onLeave, onLeaveUntil, moved:{reassigned,escalated,stranded} }` |
 | `POST /staff/:id/remove` | | `{ removed: true, moved }`. 409 has reports / only person at level; 403 yourself |
-| `POST /staff/:id/resend-invite` | | `{ sent: true }`; 400 if already registered |
+| `POST /staff/:id/resend-invite` | | `{ sent: true }` (a fresh 14-day link); 400 if already registered |
 
 ## Catalogue management (`@Roles(SUPER_ADMIN)`, `/catalog`)
 | Method & path | Body | Description |

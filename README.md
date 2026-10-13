@@ -157,7 +157,7 @@ Open **Settings** from the account menu (L2, L3 and the Super Admin; L1 does not
 | L3 | The L2 and L1 below them, in their own category |
 | L2 | The L1 below them |
 
-- **Add:** name, `@newtonschool.co` email, level (and who they report to if there is a choice). They get an invite email and create their account with that address. Removed people can be added back.
+- **Add:** name, `@newtonschool.co` email, level (and who they report to if there is a choice). They get an invite email with a personal sign-up link (valid 14 days; **Resend invite** sends a fresh one). The link names the invited address: the sign-up page shows it and cannot change it, and the server refuses to register that invitation with any other address, so the person who was added is the one who signs up. Removed people can be added back.
 - **Signing up on their own:** anyone with an `@newtonschool.co` address can also register at `/register` and verify their email. That only creates an account with no category: they see an empty queue and a note saying they are not assigned yet, and nothing else, until an admin or team lead adds them here (with the same email, no new invite needed). Signing up never gives access to tickets or management.
 - **Edit:** name and who they report to. Email and level are fixed: remove and re-add to change them.
 - **Remove:** never a hard delete. Open tickets are handed to colleagues at the same level (or escalated if nobody else is available), the person can no longer log in, and their past work stays in the analytics. You cannot remove the last POC at a level, or someone who still has a team under them.

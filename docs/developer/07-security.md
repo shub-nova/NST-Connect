@@ -21,6 +21,7 @@ The app holds students' complaints and staff identities, so security is a featur
 
 - **Passwords:** argon2id (`argon2` package), minimum 10 characters, maximum 128 (to bound hashing work).
 - **Email verification:** a user cannot log in until `emailVerifiedAt` is set by a signed link (JWT `purpose: 'verify'`, 24 h).
+- **Staff invitations:** the link carries a signed token naming the invited address (`invite` purpose, 14 days). The sign-up page locks the address and the server enforces it, so an invitation cannot be used to register a different address. Open staff sign-up (without an invitation) is still allowed on the staff domain, but creates an account with **no assignment**, which sees nothing until someone adds that address.
 - **Login errors:** wrong email *and* wrong password both give "Invalid email or password." The password is verified against a dummy hash for unknown emails, so response time does not reveal whether the address exists.
 - **Access token:** JWT (HS256 via `JWT_SECRET`), claims `{ sub, role, purpose: 'access' }`, 15 minutes. `JwtAuthGuard` rejects tokens whose `purpose` is not `access`.
 - **Refresh token:** random 48 bytes; only its SHA-256 is stored (`refresh_token.token_hash`), so a database leak does not yield usable tokens. Cookie flags: `httpOnly`, `SameSite=Lax`, `Secure` in production, `path = COOKIE_PATH`, `maxAge = REFRESH_TOKEN_TTL_DAYS`.

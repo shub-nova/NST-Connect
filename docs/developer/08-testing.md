@@ -88,6 +88,7 @@ So no test relies on another having cleaned up perfectly.
 | `reopen.e2e-spec.ts` | reopen routing, fresh clock, final outcome at the top level |
 | `self-close.e2e-spec.ts` | student close/reopen, analytics ignore it |
 | `feedback.e2e-spec.ts` | rating rules, 7-day change window, re-rating after reopen, anonymity, analytics credit and the 5-answer threshold |
+| `invite.e2e-spec.ts` | invitation links: tied to the invited address, wrong address refused, bad or wrong-purpose tokens refused, used-link message, open staff sign-up still works without access |
 | `staff.e2e-spec.ts` | team management rules, reach, leave and hand-over, removal rules, audit |
 | `catalog.e2e-spec.ts` | categories/topics, rename notes, removal blocked by open tickets, restore |
 | `settings.e2e-spec.ts` | escalation time range, who may change it, effect on new deadlines only |
