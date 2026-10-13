@@ -16,6 +16,7 @@ Read this guide in order and you will know how the whole system works: what it i
 | 10 | [Known gaps and roadmap](10-known-gaps-and-roadmap.md) | What is not built, the sharp edges, and ideas for what comes next |
 | 11 | [API reference](11-api-reference.md) | Every endpoint: who may call it, input, output, errors |
 | 12 | [Capacity and cost](12-capacity-and-cost.md) | How many users it handles (estimates), what breaks first, what 2,000 users cost, how to load-test |
+| 13 | [Edge-case testing](13-edge-case-testing.md) | What the edge-case pass covered, defects it found and fixed, and a checklist to repeat it on staging |
 
 Also in the repository:
 

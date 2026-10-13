@@ -28,7 +28,7 @@ You are always tied to one or more **category and level** pairs (for example "Ho
 
 ## 3. Who gets which ticket
 
-- A new ticket goes to the **least-loaded L1** (fewest open tickets) who is **not on leave**.
+- A new ticket goes to the **least-loaded L1** (fewest open tickets) who is **not on leave**. Someone who has been added but **has not created their account yet** is skipped while a colleague with an account is available, so new tickets are not left waiting for a person who cannot see them.
 - If nobody is available at L1, it starts at the next level that has someone.
 - **Important: you see every ticket at your category and level, not only the ones assigned to you.** Whoever opens a ticket and acts on it (reply, in progress, solve, close, escalate) **claims it**: it becomes theirs. Because actions are locked per ticket, two people acting at once cannot clash: the second one waits.
 - Once a ticket moves to another level it **disappears from your queue** (you no longer have access to it).

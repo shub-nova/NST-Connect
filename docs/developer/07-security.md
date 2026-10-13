@@ -26,7 +26,7 @@ The app holds students' complaints and staff identities, so security is a featur
 - **Access token:** JWT (HS256 via `JWT_SECRET`), claims `{ sub, role, purpose: 'access' }`, 15 minutes. `JwtAuthGuard` rejects tokens whose `purpose` is not `access`.
 - **Refresh token:** random 48 bytes; only its SHA-256 is stored (`refresh_token.token_hash`), so a database leak does not yield usable tokens. Cookie flags: `httpOnly`, `SameSite=Lax`, `Secure` in production, `path = COOKIE_PATH`, `maxAge = REFRESH_TOKEN_TTL_DAYS`.
 - **Rotation and theft detection:** every refresh revokes the old token and issues a new one. A revoked token reused after the 10-second grace window revokes **all** the user's sessions (`revokedAt = epoch`).
-- **Logout** revokes the token and clears the cookie. **Deactivation** blocks login and refresh and deletes the user's tokens.
+- **Logout** ends the token immediately (epoch marker, no grace window) together with a token rotated just before it, and clears the cookie. A password reset does the same for every token of the account. **Deactivation** blocks login and refresh and deletes the user's tokens.
 - **Password reset:** one-hour link bound to the current password hash fingerprint (works once), 2-minute resend cooldown, every session ended after a reset.
 - **CSRF:** state-changing API calls need the `Authorization: Bearer` header (not a cookie), which another site cannot add. The only cookie-authenticated endpoints are `/auth/refresh` and `/auth/logout`, protected by `SameSite=Lax` (cross-site POSTs do not carry the cookie) and CORS.
 
